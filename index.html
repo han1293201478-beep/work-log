@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>夜班工时合规检查器（含高级统计 & 图表）</title>
-  <!-- 引入 Chart.js -->
+  <title>夜班工时合规检查器（云端同步版）</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     /* ========== 原有样式保留 ========== */
     body {
@@ -39,7 +39,7 @@
       border-color: #1890ff;
     }
 
-    /* ========== 日历相关样式（略，保留原样） ========== */
+    /* ========== 日历相关样式 ========== */
     .month-picker, .view-toggle, .import-export, .nav-tabs, .controls {
       text-align: center;
       margin: 10px 0;
@@ -98,6 +98,7 @@
     .btn-delete { background: #ff4d4f; color: white; }
     .btn-extra { background: #722ed1; color: white; }
     .btn-settings { background: #13c2c2; color: white; }
+    .btn-sync { background: #52c41a; color: white; }
 
     .shift-info {
       margin-top: 20px;
@@ -246,7 +247,7 @@
       height: 300px;
     }
 
-    /* 新增：多选模式指示器 */
+    /* 多选模式指示器 */
     .selection-mode-indicator {
       background: #1890ff;
       color: white;
@@ -255,11 +256,30 @@
       font-size: 14px;
       display: inline-block;
     }
+
+    /* 同步状态指示器 */
+    .sync-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 10px;
+      background: #f0f9ff;
+      border-radius: 4px;
+      font-size: 14px;
+      margin-left: 10px;
+    }
+    .sync-status.synced { color: #52c41a; }
+    .sync-status.syncing { color: #1890ff; animation: pulse 1s infinite; }
+    .sync-status.error { color: #ff4d4f; }
+    @keyframes pulse { 50% { opacity: 0.5; } }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>夜班工时合规检查器（含高级统计 & 图表）</h1>
+    <h1>
+      夜班工时合规检查器（云端同步版）
+      <span id="syncStatus" class="sync-status synced">✓ 已同步</span>
+    </h1>
 
     <!-- 导航标签 -->
     <div class="nav-tabs">
@@ -268,19 +288,22 @@
       <button id="tab-settings" onclick="switchTab('settings')">⚙️ 设置</button>
     </div>
 
-    <!-- 日历面板（简化版，保留核心） -->
+    <!-- 日历面板 -->
     <div id="panel-calendar" class="panel active">
       <div class="month-picker">
         <label>选择月份：</label>
         <input type="month" id="monthInput" />
         <button onclick="renderCalendar()">确定</button>
+        <button class="btn-sync" onclick="forceSync()">🔄 立即同步</button>
       </div>
 
       <div class="import-export">
         <button onclick="exportData()">📤 导出备份（JSON）</button>
         <button onclick="document.getElementById('importFileInput').click()">📥 手动导入</button>
         <input type="file" id="importFileInput" accept=".json" onchange="importData(event)" />
-        <p style="font-size:12px;color:#666;margin-top:6px;">✅ 数据已自动保存并可通过 Edge 同步</p>
+        <p style="font-size:12px;color:#666;margin-top:6px;">
+          ☁️ 数据自动云端同步 | ✓ 离线可用 | ID: <span id="userIdDisplay"></span>
+        </p>
       </div>
 
       <div class="view-toggle">
@@ -308,7 +331,7 @@
       </div>
     </div>
 
-    <!-- 统计分析面板（重点增强） -->
+    <!-- 统计分析面板 -->
     <div id="panel-stats" class="panel">
       <h2>📊 高级统计分析</h2>
 
@@ -363,6 +386,12 @@
             <option value="cycle">6天循环历</option>
           </select>
         </div>
+        <!-- 用户ID设置 -->
+        <div class="setting-item">
+          <label>同步用户ID（多设备请保持一致）</label>
+          <input type="text" id="settingUserId" placeholder="输入字母数字组合" />
+          <small style="color:#666;">用于区分不同用户数据</small>
+        </div>
       </div>
       <div style="text-align:center; margin-top:20px;">
         <button class="btn-settings" onclick="saveSettings()">💾 保存设置</button>
@@ -371,7 +400,7 @@
     </div>
   </div>
 
-  <!-- 额外弹窗 & 右键菜单（略，保留原逻辑） -->
+  <!-- 额外弹窗 & 右键菜单 -->
   <div id="extraModal" class="modal">
     <div class="modal-content">
       <h3>额外调整工时</h3>
@@ -396,15 +425,184 @@
     box-shadow: 2px 2px 6px rgba(0,0,0,0.2);
     z-index: 2000;
     display: none;
-    min-width: 120px;
+      min-width: 120px;
   ">
     <div onclick="deleteSingleShift()" style="padding:8px 12px;cursor:pointer;">删除班次</div>
   </div>
 
   <script>
+    // ============ Supabase 配置（已填写您的信息）===========
+    const SUPABASE_URL = 'https://morkovixfwdsaknmwavj.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1vcmtvdml4Zndkc2Frbm13YXZqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM3MzM1NDIsImV4cCI6MjA3OTMwOTU0Mn0.wh-UEaQyr3bpJBQkCrzJpRR5v4NvRpx3LsnsAo-DGqE';
+
+    // 初始化 Supabase 客户端
+    let supabase;
+    try {
+      supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      console.log('✅ Supabase 初始化成功');
+    } catch (e) {
+      console.error('❌ Supabase 初始化失败:', e);
+      alert('⚠️ 云端同步配置异常，请检查网络连接');
+    }
+
     // ============ 数据存储 ============
-    let shifts = JSON.parse(localStorage.getItem('shifts_edge_sync') || '{}');
-    let selectedMonth = localStorage.getItem('selectedMonth_edge_sync') || new Date().toISOString().slice(0, 7);
+    function getUserId() {
+      let userId = localStorage.getItem('userId');
+      if (!userId) {
+        userId = 'user_' + Math.random().toString(36).substr(2, 9);
+        localStorage.setItem('userId', userId);
+        alert(`🆔 已生成本机用户ID: ${userId}\n\n多设备同步：在其他设备设置中填入相同ID`);
+      }
+      return userId;
+    }
+
+    let shifts = {};
+    let settings = {};
+    let selectedMonth = '';
+    let currentView = 'week';
+    let multiSelectedDates = new Set();
+    let rightClickedDate = '';
+    let weekSummaries = [];
+    let chartInstance = null;
+    let isMultiSelectMode = false;
+
+    // 显示用户ID
+    document.getElementById('userIdDisplay').textContent = getUserId().substring(0, 8);
+
+    async function saveToStorage(options = { sync: true }) {
+      const userId = getUserId();
+      
+      // 保存到本地（缓存）
+      localStorage.setItem('shifts_local', JSON.stringify(shifts));
+      localStorage.setItem('selectedMonth_local', selectedMonth);
+      localStorage.setItem('shifts_settings_local', JSON.stringify(settings));
+      localStorage.setItem('userId', userId);
+
+      // 同步到云端
+      if (supabase && options.sync) {
+        updateSyncStatus('syncing', '⏳ 同步中...');
+        
+        try {
+          // 批量保存班次
+          const shiftPromises = Object.entries(shifts).map(async ([date, data]) => {
+            const { data: existing } = await supabase
+              .from('shifts')
+              .select('id')
+              .eq('user_id', userId)
+              .eq('date', date)
+              .single();
+
+            if (existing) {
+              return supabase
+                .from('shifts')
+                .update({ data, updated_at: new Date().toISOString() })
+                .eq('user_id', userId)
+                .eq('date', date);
+            } else {
+              return supabase
+                .from('shifts')
+                .insert({ user_id: userId, date, data });
+            }
+          });
+
+          // 保存设置
+          const settingsPromise = supabase
+            .from('settings')
+            .upsert({ 
+              user_id: userId, 
+              data: settings,
+              updated_at: new Date().toISOString()
+            });
+
+          await Promise.all([...shiftPromises, settingsPromise]);
+          
+          updateSyncStatus('synced', '✓ 已同步');
+          console.log('☁️ 云端同步成功');
+        } catch (error) {
+          console.error('❌ 云端同步失败:', error);
+          updateSyncStatus('error', '✗ 同步失败');
+        }
+      }
+    }
+
+    // 从云端加载
+    async function loadFromCloud() {
+      if (!supabase) {
+        console.warn('⚠️ Supabase 未配置，使用本地数据');
+        loadFromLocal();
+        return;
+      }
+
+      const userId = getUserId();
+      updateSyncStatus('syncing', '⏳ 加载云端数据...');
+
+      try {
+        // 加载班次
+        const { data: shiftsData, error: shiftsError } = await supabase
+          .from('shifts')
+          .select('date, data')
+          .eq('user_id', userId);
+
+        if (shiftsError) throw shiftsError;
+
+        // 加载设置
+        const { data: settingsData, error: settingsError } = await supabase
+          .from('settings')
+          .select('data')
+          .eq('user_id', userId)
+          .single();
+
+        if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
+
+        // 合并数据
+        if (shiftsData) {
+          shifts = {};
+          shiftsData.forEach(row => {
+            shifts[row.date] = row.data;
+          });
+          localStorage.setItem('shifts_local', JSON.stringify(shifts));
+        }
+
+        if (settingsData?.data) {
+          settings = { ...defaultSettings, ...settingsData.data };
+          localStorage.setItem('shifts_settings_local', JSON.stringify(settings));
+        }
+
+        updateSyncStatus('synced', '✓ 已同步');
+        console.log('☁️ 云端数据加载成功');
+      } catch (error) {
+        console.error('❌ 云端加载失败:', error);
+        updateSyncStatus('error', '✗ 加载失败');
+        loadFromLocal();
+      }
+    }
+
+    function loadFromLocal() {
+      shifts = JSON.parse(localStorage.getItem('shifts_local') || '{}');
+      selectedMonth = localStorage.getItem('selectedMonth_local') || new Date().toISOString().slice(0, 7);
+      settings = JSON.parse(localStorage.getItem('shifts_settings_local') || JSON.stringify(defaultSettings));
+    }
+
+    function updateSyncStatus(type, message) {
+      const statusEl = document.getElementById('syncStatus');
+      statusEl.className = 'sync-status ' + type;
+      statusEl.textContent = message;
+      
+      if (type !== 'synced') {
+        setTimeout(() => {
+          statusEl.className = 'sync-status synced';
+          statusEl.textContent = '✓ 已同步';
+        }, 3000);
+      }
+    }
+
+    async function forceSync() {
+      await loadFromCloud();
+      renderCalendar();
+      if (document.getElementById('panel-stats').classList.contains('active')) {
+        renderStatsWithRange();
+      }
+    }
 
     const defaultSettings = {
       bigMain: 7.4,
@@ -413,32 +611,6 @@
       limit: 40,
       defaultView: 'week'
     };
-
-    let settings = JSON.parse(localStorage.getItem('shifts_settings') || JSON.stringify(defaultSettings));
-    let currentView = settings.defaultView;
-    let multiSelectedDates = new Set();
-    let rightClickedDate = '';
-    let weekSummaries = [];
-    let chartInstance = null;
-
-    // 新增：多选模式状态
-    let isMultiSelectMode = false;
-
-    function saveToStorage() {
-      localStorage.setItem('shifts_edge_sync', JSON.stringify(shifts));
-      localStorage.setItem('selectedMonth_edge_sync', selectedMonth);
-      localStorage.setItem('shifts_settings', JSON.stringify(settings));
-    }
-
-    document.getElementById('monthInput').value = selectedMonth;
-
-    function loadSettingsUI() {
-      document.getElementById('settingBigMain').value = settings.bigMain;
-      document.getElementById('settingBigNext').value = settings.bigNext;
-      document.getElementById('settingSmall').value = settings.small;
-      document.getElementById('settingLimit').value = settings.limit;
-      document.getElementById('settingDefaultView').value = settings.defaultView;
-    }
 
     // ========== 标签切换 ==========
     function switchTab(tab) {
@@ -460,7 +632,7 @@
     function switchView(view) {
       currentView = view;
       settings.defaultView = view;
-      saveToStorage();
+      saveToStorage({ sync: true });
 
       document.querySelectorAll('.view-toggle button').forEach(btn => btn.classList.remove('active'));
       if (view === 'week') {
@@ -472,6 +644,15 @@
     }
 
     // ========== 设置管理 ==========
+    function loadSettingsUI() {
+      document.getElementById('settingBigMain').value = settings.bigMain;
+      document.getElementById('settingBigNext').value = settings.bigNext;
+      document.getElementById('settingSmall').value = settings.small;
+      document.getElementById('settingLimit').value = settings.limit;
+      document.getElementById('settingDefaultView').value = settings.defaultView;
+      document.getElementById('settingUserId').value = getUserId();
+    }
+
     function saveSettings() {
       const s = settings;
       s.bigMain = parseFloat(document.getElementById('settingBigMain').value) || defaultSettings.bigMain;
@@ -479,8 +660,16 @@
       s.small = parseFloat(document.getElementById('settingSmall').value) || defaultSettings.small;
       s.limit = parseFloat(document.getElementById('settingLimit').value) || defaultSettings.limit;
       s.defaultView = document.getElementById('settingDefaultView').value;
-      saveToStorage();
-      alert('✅ 设置已保存并同步！');
+      
+      const newUserId = document.getElementById('settingUserId').value.trim();
+      if (newUserId && newUserId !== getUserId()) {
+        localStorage.setItem('userId', newUserId);
+        alert('🆔 用户ID已更新！请在其他设备填入相同ID以实现同步');
+      }
+
+      saveToStorage({ sync: true });
+      alert('✅ 设置已保存并同步到云端！');
+      
       if (currentView !== s.defaultView) {
         switchView(s.defaultView);
       }
@@ -489,7 +678,7 @@
     function resetSettings() {
       if (confirm('确定恢复默认设置？')) {
         settings = { ...defaultSettings };
-        saveToStorage();
+        saveToStorage({ sync: true });
         loadSettingsUI();
         alert('已恢复默认设置');
       }
@@ -498,10 +687,12 @@
     // ========== 导出/导入 ==========
     function exportData() {
       const data = {
-        version: 'edge-sync-v3',
+        version: 'cloud-sync-v4',
         shifts: shifts,
         month: selectedMonth,
-        settings: settings
+        settings: settings,
+        userId: getUserId(),
+        exportTime: new Date().toISOString()
       };
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
@@ -518,17 +709,25 @@
       const file = event.target.files[0];
       if (!file) return;
       const reader = new FileReader();
-      reader.onload = function(e) {
+      reader.onload = async function(e) {
         try {
           const data = JSON.parse(e.target.result);
+          
+          if (!confirm(`确认导入数据？\n用户ID: ${data.userId || '未指定'}\n工作天数: ${Object.keys(data.shifts || {}).length}\n这将覆盖本地数据！`)) {
+            return;
+          }
+
           shifts = data.shifts || {};
           if (data.month) selectedMonth = data.month;
           if (data.settings) settings = data.settings;
-          saveToStorage();
+          if (data.userId) localStorage.setItem('userId', data.userId);
+          
+          await saveToStorage({ sync: true });
+          
           document.getElementById('monthInput').value = selectedMonth;
           loadSettingsUI();
           renderCalendar();
-          alert('数据导入成功！');
+          alert('✅ 数据导入并同步成功！');
         } catch (err) {
           console.error(err);
           alert('导入失败：文件格式错误');
@@ -538,12 +737,12 @@
       event.target.value = '';
     }
 
-    // ========== 日历渲染（简化保留） ==========
+    // ========== 日历渲染 ==========
     function renderCalendar() {
       const monthInput = document.getElementById('monthInput').value;
       if (!monthInput) return;
       selectedMonth = monthInput;
-      saveToStorage();
+      saveToStorage({ sync: true });
 
       const year = parseInt(selectedMonth.split('-')[0]);
       const month = parseInt(selectedMonth.split('-')[1]) - 1;
@@ -625,11 +824,11 @@
           }
         }
 
-        // 新增：长按多选逻辑
+        // 长按多选
         cell.addEventListener('mousedown', (e) => {
-          if (e.button === 0) { // 左键
+          if (e.button === 0) {
             if (e.ctrlKey || e.metaKey) {
-              // 电脑：Ctrl+点击
+              e.preventDefault();
               toggleMultiSelect(dateStr, cell);
               isMultiSelectMode = true;
               updateMultiSelectUI();
@@ -637,16 +836,14 @@
           }
         });
 
-        // 触屏长按逻辑
         let longPressTimer = null;
         cell.addEventListener('touchstart', (e) => {
-          e.preventDefault(); // 防止默认滚动行为
+          e.preventDefault();
           longPressTimer = setTimeout(() => {
-            // 长按进入多选模式
             isMultiSelectMode = true;
             updateMultiSelectUI();
             toggleMultiSelect(dateStr, cell);
-          }, 500); // 500ms 长按
+          }, 500);
         });
 
         cell.addEventListener('touchend', (e) => {
@@ -658,10 +855,8 @@
 
         cell.addEventListener('click', (e) => {
           if (isMultiSelectMode) {
-            // 多选模式：点击切换选中
             toggleMultiSelect(dateStr, cell);
           } else {
-            // 单选模式：清除之前选择，只选这一个
             clearMultiSelectUI();
             multiSelectedDates.clear();
           }
@@ -689,7 +884,7 @@
       updateWeekSummary();
     }
 
-    // ========== 工具函数（保留关键） ==========
+    // ========== 工具函数 ==========
     function toggleMultiSelect(dateStr, cell) {
       if (multiSelectedDates.has(dateStr)) {
         multiSelectedDates.delete(dateStr);
@@ -717,7 +912,6 @@
       }
     }
 
-    // 新增：更新多选UI状态
     function updateMultiSelectUI() {
       const indicator = document.getElementById('selectionModeIndicator');
       const hint = document.getElementById('multiSelectHint');
@@ -730,7 +924,7 @@
       }
     }
 
-    function applyShiftToSelected(type) {
+    async function applyShiftToSelected(type) {
       if (multiSelectedDates.size === 0) {
         alert('请先选择至少一个日期');
         return;
@@ -752,7 +946,7 @@
         if (shifts[dateStr].extraMeta) delete shifts[dateStr].extraMeta;
       });
 
-      saveToStorage();
+      await saveToStorage({ sync: true });
       clearMultiSelectUI();
       multiSelectedDates.clear();
       isMultiSelectMode = false;
@@ -760,7 +954,7 @@
       renderCalendar();
     }
 
-    function deleteSelected() {
+    async function deleteSelected() {
       if (multiSelectedDates.size === 0) {
         alert('请先选择要删除的日期');
         return;
@@ -780,7 +974,7 @@
         }
       });
 
-      saveToStorage();
+      await saveToStorage({ sync: true });
       clearMultiSelectUI();
       multiSelectedDates.clear();
       isMultiSelectMode = false;
@@ -788,7 +982,7 @@
       renderCalendar();
     }
 
-    function deleteSingleShift() {
+    async function deleteSingleShift() {
       if (!rightClickedDate) return;
       const shift = shifts[rightClickedDate];
       delete shifts[rightClickedDate];
@@ -802,7 +996,7 @@
         }
       }
 
-      saveToStorage();
+      await saveToStorage({ sync: true });
       document.getElementById('contextMenu').style.display = 'none';
       renderCalendar();
     }
@@ -828,7 +1022,7 @@
       document.getElementById('extraModal').style.display = 'none';
     }
 
-    function applyExtra() {
+    async function applyExtra() {
       const inputEl = document.getElementById('extraInput');
       const valueStr = inputEl.value.trim();
       if (!valueStr) {
@@ -868,7 +1062,7 @@
         }
       });
 
-      saveToStorage();
+      await saveToStorage({ sync: true });
       closeExtraModal();
       clearMultiSelectUI();
       multiSelectedDates.clear();
@@ -1067,7 +1261,6 @@
       let bigCount = 0, smallCount = 0, customCount = 0;
       let workedDates = [];
 
-      // 遍历每一天
       const currentDate = new Date(startDate);
       while (currentDate <= endDate) {
         const dateStr = currentDate.toISOString().split('T')[0];
@@ -1087,7 +1280,6 @@
         currentDate.setDate(currentDate.getDate() + 1);
       }
 
-      // 计算最长连续工作天数
       let maxConsecutive = 0;
       if (workedDates.length > 0) {
         workedDates.sort((a, b) => a - b);
@@ -1130,7 +1322,6 @@
         grid.appendChild(div);
       });
 
-      // 绘制图表
       renderMonthlyChart(allMonths);
     }
 
@@ -1190,14 +1381,44 @@
     }
 
     // ========== 初始化 ==========
-    window.onload = () => {
+    window.onload = async () => {
+      await loadFromCloud();
+      
+      document.getElementById('monthInput').value = selectedMonth;
       loadSettingsUI();
       renderCalendar();
+      
+      // 启用实时订阅
+      if (supabase) {
+        const userId = getUserId();
+        
+        supabase
+          .channel('shifts-channel')
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'shifts', filter: `user_id=eq.${userId}` }, async (payload) => {
+            console.log('☁️ 收到云端数据更新');
+            await loadFromCloud();
+            renderCalendar();
+          })
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'settings', filter: `user_id=eq.${userId}` }, async (payload) => {
+            console.log('☁️ 收到设置更新');
+            await loadFromCloud();
+            loadSettingsUI();
+          })
+          .subscribe();
+      }
     };
 
     window.onclick = (e) => {
       if (e.target.id === 'extraModal') closeExtraModal();
     };
+
+    // 页面激活时自动同步
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && supabase) {
+        console.log('页面激活，自动同步...');
+        forceSync();
+      }
+    });
   </script>
 </body>
 </html>
