@@ -1,0 +1,1136 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>夜班工时合规检查器（含高级统计 & 图表）</title>
+  <!-- 引入 Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    /* ========== 原有样式保留 ========== */
+    body {
+      font-family: "Microsoft YaHei", sans-serif;
+      padding: 20px;
+      background-color: #f9f9f9;
+    }
+    .container {
+      max-width: 950px;
+      margin: 0 auto;
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+    h1, h2, h3 {
+      color: #333;
+    }
+    h1 { text-align: center; }
+    .nav-tabs button {
+      margin: 0 6px;
+      padding: 6px 12px;
+      border: 1px solid #ccc;
+      background: #f5f5f5;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+    .nav-tabs button.active {
+      background: #1890ff;
+      color: white;
+      border-color: #1890ff;
+    }
+
+    /* ========== 日历相关样式（略，保留原样） ========== */
+    .month-picker, .view-toggle, .import-export, .nav-tabs, .controls {
+      text-align: center;
+      margin: 10px 0;
+    }
+    .calendar {
+      display: grid;
+      gap: 4px;
+      margin-top: 10px;
+    }
+    .day-header {
+      text-align: center;
+      font-weight: bold;
+      padding: 6px;
+      background: #eee;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    .day-cell {
+      height: 80px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      cursor: pointer;
+      background: #fff;
+      font-size: 14px;
+      user-select: none;
+      position: relative;
+      padding: 4px;
+      text-align: center;
+    }
+    .day-number { font-weight: bold; }
+    .day-hours { font-size: 12px; color: #666; margin-top: 2px; }
+    .day-extra { font-size: 11px; color: #999; }
+    .day-total { font-size: 11px; color: #d46b08; font-weight: bold; margin-top: 2px; }
+    .day-cell:hover { background: #e6f7ff; }
+    .day-cell.selected-big { background: #ffe58f; border-color: #faad14; }
+    .day-cell.selected-small { background: #b7eb8f; border-color: #52c41a; }
+    .day-cell.custom { background: #ffd6e7; border-color: #eb2f96; }
+    .day-cell.over-limit { box-shadow: 0 0 0 3px red; }
+    .day-cell.multi-selected { outline: 2px solid blue; z-index: 2; }
+
+    .controls button {
+      margin: 5px;
+      padding: 8px 12px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .btn-big { background: #faad14; color: white; }
+    .btn-small { background: #52c41a; color: white; }
+    .btn-clear { background: #d9d9d9; color: black; }
+    .btn-delete { background: #ff4d4f; color: white; }
+    .btn-extra { background: #722ed1; color: white; }
+    .btn-settings { background: #13c2c2; color: white; }
+
+    .shift-info {
+      margin-top: 20px;
+      padding: 15px;
+      background: #f0f9ff;
+      border-radius: 6px;
+    }
+    .result {
+      margin-top: 10px;
+      padding: 8px;
+      border-radius: 4px;
+      font-weight: bold;
+    }
+    .ok { background: #f6ffed; color: #52c41a; }
+    .warn { background: #fff2f0; color: #ff4d4f; }
+
+    .week-summary {
+      margin-top: 20px;
+    }
+    .week-list {
+      max-height: 300px;
+      overflow-y: auto;
+      border: 1px solid #eee;
+      border-radius: 6px;
+      padding: 10px;
+      background: #fafafa;
+    }
+    .week-item {
+      padding: 6px 0;
+      border-bottom: 1px solid #f0f0f0;
+      font-size: 14px;
+    }
+    .week-item.violation {
+      background: #fff2f0;
+      color: #ff4d4f;
+      font-weight: bold;
+    }
+
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0,0,0,0.5);
+      z-index: 3000;
+      justify-content: center;
+      align-items: center;
+    }
+    .modal-content {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      width: 320px;
+      text-align: left;
+    }
+    .modal h3 {
+      text-align: center;
+      margin-top: 0;
+    }
+    .modal input, .modal select {
+      width: 100%;
+      padding: 8px;
+      margin: 10px 0;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
+    .modal-buttons {
+      text-align: center;
+      margin-top: 15px;
+    }
+    .modal-buttons button {
+      margin: 0 8px;
+    }
+
+    #importFileInput { display: none; }
+
+    /* ========== 设置与统计面板 ========== */
+    .panel {
+      display: none;
+    }
+    .panel.active {
+      display: block;
+    }
+
+    .settings-grid, .stats-controls, .stats-grid {
+      display: grid;
+      gap: 15px;
+      margin-top: 15px;
+    }
+    .settings-grid {
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    }
+    .setting-item, .stat-item {
+      padding: 12px;
+      background: #fafafa;
+      border-radius: 6px;
+      border: 1px solid #eee;
+    }
+    .setting-item label {
+      display: block;
+      margin-bottom: 6px;
+      font-weight: bold;
+      font-size: 14px;
+    }
+    .setting-item input, .setting-item select {
+      width: 100%;
+      padding: 6px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+
+    .stat-value {
+      font-size: 20px;
+      font-weight: bold;
+      color: #1890ff;
+      margin-top: 6px;
+    }
+
+    /* 统计面板专用 */
+    .stats-controls {
+      grid-template-columns: 1fr 1fr auto;
+      align-items: end;
+    }
+    .stats-controls > div {
+      display: flex;
+      flex-direction: column;
+    }
+    .stats-controls label {
+      font-size: 14px;
+      margin-bottom: 4px;
+    }
+    .stats-controls input[type="date"] {
+      padding: 6px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    .stats-controls button {
+      height: 34px;
+      margin-top: 22px;
+    }
+
+    #chartContainer {
+      margin-top: 20px;
+      position: relative;
+      height: 300px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>夜班工时合规检查器（含高级统计 & 图表）</h1>
+
+    <!-- 导航标签 -->
+    <div class="nav-tabs">
+      <button id="tab-calendar" class="active" onclick="switchTab('calendar')">日历</button>
+      <button id="tab-stats" onclick="switchTab('stats')">📊 统计分析</button>
+      <button id="tab-settings" onclick="switchTab('settings')">⚙️ 设置</button>
+    </div>
+
+    <!-- 日历面板（简化版，保留核心） -->
+    <div id="panel-calendar" class="panel active">
+      <div class="month-picker">
+        <label>选择月份：</label>
+        <input type="month" id="monthInput" />
+        <button onclick="renderCalendar()">确定</button>
+      </div>
+
+      <div class="import-export">
+        <button onclick="exportData()">📤 导出备份（JSON）</button>
+        <button onclick="document.getElementById('importFileInput').click()">📥 手动导入</button>
+        <input type="file" id="importFileInput" accept=".json" onchange="importData(event)" />
+        <p style="font-size:12px;color:#666;margin-top:6px;">✅ 数据已自动保存并可通过 Edge 同步</p>
+      </div>
+
+      <div class="view-toggle">
+        <button id="btn-week" class="active" onclick="switchView('week')">标准周历（7天/周）</button>
+        <button id="btn-cycle" onclick="switchView('cycle')">6天循环历</button>
+      </div>
+
+      <div class="controls">
+        <p>• 按住 <strong>Ctrl/Cmd</strong> 多选 → 批量操作｜<strong>右键</strong> 单个日期 → 删除</p>
+        <button class="btn-big" onclick="applyShiftToSelected('big')">设为大夜班</button>
+        <button class="btn-small" onclick="applyShiftToSelected('small')">设为小夜班</button>
+        <button class="btn-delete" onclick="deleteSelected()">删除所选</button>
+        <button class="btn-extra" onclick="openExtraModal()">额外调整</button>
+        <button class="btn-clear" onclick="clearSelected()">取消多选</button>
+      </div>
+
+      <div class="calendar" id="calendar"></div>
+
+      <div class="shift-info" id="shiftInfo"></div>
+
+      <div class="week-summary">
+        <h3>📅 连续7天工时统计（仅含当月日期的轮次）</h3>
+        <div class="week-list" id="weekList"></div>
+      </div>
+    </div>
+
+    <!-- 统计分析面板（重点增强） -->
+    <div id="panel-stats" class="panel">
+      <h2>📊 高级统计分析</h2>
+
+      <div class="stats-controls">
+        <div>
+          <label>开始日期</label>
+          <input type="date" id="statStartDate" />
+        </div>
+        <div>
+          <label>结束日期</label>
+          <input type="date" id="statEndDate" />
+        </div>
+        <div>
+          <button class="btn-settings" onclick="renderStatsWithRange()">🔍 分析</button>
+        </div>
+      </div>
+
+      <div class="stats-grid" id="statsGrid">
+        <!-- 动态生成 -->
+      </div>
+
+      <div id="chartContainer">
+        <canvas id="monthlyChart"></canvas>
+      </div>
+    </div>
+
+    <!-- 设置面板 -->
+    <div id="panel-settings" class="panel">
+      <h2>⚙️ 系统设置</h2>
+      <p>修改后自动保存，所有设备同步生效。</p>
+      <div class="settings-grid">
+        <div class="setting-item">
+          <label>大夜班主时段（小时）</label>
+          <input type="number" step="0.1" id="settingBigMain" />
+        </div>
+        <div class="setting-item">
+          <label>大夜班次日时段（小时）</label>
+          <input type="number" step="0.1" id="settingBigNext" />
+        </div>
+        <div class="setting-item">
+          <label>小夜班工时（小时）</label>
+          <input type="number" step="0.1" id="settingSmall" />
+        </div>
+        <div class="setting-item">
+          <label>合规阈值（7天最大工时）</label>
+          <input type="number" step="0.1" id="settingLimit" />
+        </div>
+        <div class="setting-item">
+          <label>默认视图</label>
+          <select id="settingDefaultView">
+            <option value="week">标准周历</option>
+            <option value="cycle">6天循环历</option>
+          </select>
+        </div>
+      </div>
+      <div style="text-align:center; margin-top:20px;">
+        <button class="btn-settings" onclick="saveSettings()">💾 保存设置</button>
+        <button class="btn-clear" onclick="resetSettings()" style="margin-left:10px;">🔄 恢复默认</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 额外弹窗 & 右键菜单（略，保留原逻辑） -->
+  <div id="extraModal" class="modal">
+    <div class="modal-content">
+      <h3>额外调整工时</h3>
+      <p>对所选日期，在原有基础上增加或减少工时</p>
+      <div class="unit-selector">
+        <label><input type="radio" name="unit" value="hour" checked /> 小时（如 1.5）</label>
+        <label><input type="radio" name="unit" value="minute" /> 分钟（如 -30）</label>
+      </div>
+      <input type="number" id="extraInput" placeholder="输入数值（可为负数）" step="any" />
+      <div class="modal-buttons">
+        <button onclick="applyExtra()">确定</button>
+        <button onclick="closeExtraModal()">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="contextMenu" style="
+    position: absolute;
+    background: white;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    box-shadow: 2px 2px 6px rgba(0,0,0,0.2);
+    z-index: 2000;
+    display: none;
+    min-width: 120px;
+  ">
+    <div onclick="deleteSingleShift()" style="padding:8px 12px;cursor:pointer;">删除班次</div>
+  </div>
+
+  <script>
+    // ============ 数据存储 ============
+    let shifts = JSON.parse(localStorage.getItem('shifts_edge_sync') || '{}');
+    let selectedMonth = localStorage.getItem('selectedMonth_edge_sync') || new Date().toISOString().slice(0, 7);
+
+    const defaultSettings = {
+      bigMain: 7.4,
+      bigNext: 3,
+      small: 9.3,
+      limit: 40,
+      defaultView: 'week'
+    };
+
+    let settings = JSON.parse(localStorage.getItem('shifts_settings') || JSON.stringify(defaultSettings));
+    let currentView = settings.defaultView;
+    let multiSelectedDates = new Set();
+    let rightClickedDate = '';
+    let weekSummaries = [];
+    let chartInstance = null;
+
+    function saveToStorage() {
+      localStorage.setItem('shifts_edge_sync', JSON.stringify(shifts));
+      localStorage.setItem('selectedMonth_edge_sync', selectedMonth);
+      localStorage.setItem('shifts_settings', JSON.stringify(settings));
+    }
+
+    document.getElementById('monthInput').value = selectedMonth;
+
+    function loadSettingsUI() {
+      document.getElementById('settingBigMain').value = settings.bigMain;
+      document.getElementById('settingBigNext').value = settings.bigNext;
+      document.getElementById('settingSmall').value = settings.small;
+      document.getElementById('settingLimit').value = settings.limit;
+      document.getElementById('settingDefaultView').value = settings.defaultView;
+    }
+
+    // ========== 标签切换 ==========
+    function switchTab(tab) {
+      ['calendar', 'stats', 'settings'].forEach(t => {
+        document.getElementById(`panel-${t}`).classList.remove('active');
+        document.getElementById(`tab-${t}`).classList.remove('active');
+      });
+      document.getElementById(`panel-${tab}`).classList.add('active');
+      document.getElementById(`tab-${tab}`).classList.add('active');
+
+      if (tab === 'stats') {
+        initDateRangeForStats();
+        renderStatsWithRange();
+      } else if (tab === 'settings') {
+        loadSettingsUI();
+      }
+    }
+
+    function switchView(view) {
+      currentView = view;
+      settings.defaultView = view;
+      saveToStorage();
+
+      document.querySelectorAll('.view-toggle button').forEach(btn => btn.classList.remove('active'));
+      if (view === 'week') {
+        document.getElementById('btn-week').classList.add('active');
+      } else {
+        document.getElementById('btn-cycle').classList.add('active');
+      }
+      renderCalendar();
+    }
+
+    // ========== 设置管理 ==========
+    function saveSettings() {
+      const s = settings;
+      s.bigMain = parseFloat(document.getElementById('settingBigMain').value) || defaultSettings.bigMain;
+      s.bigNext = parseFloat(document.getElementById('settingBigNext').value) || defaultSettings.bigNext;
+      s.small = parseFloat(document.getElementById('settingSmall').value) || defaultSettings.small;
+      s.limit = parseFloat(document.getElementById('settingLimit').value) || defaultSettings.limit;
+      s.defaultView = document.getElementById('settingDefaultView').value;
+      saveToStorage();
+      alert('✅ 设置已保存并同步！');
+      if (currentView !== s.defaultView) {
+        switchView(s.defaultView);
+      }
+    }
+
+    function resetSettings() {
+      if (confirm('确定恢复默认设置？')) {
+        settings = { ...defaultSettings };
+        saveToStorage();
+        loadSettingsUI();
+        alert('已恢复默认设置');
+      }
+    }
+
+    // ========== 导出/导入 ==========
+    function exportData() {
+      const data = {
+        version: 'edge-sync-v3',
+        shifts: shifts,
+        month: selectedMonth,
+        settings: settings
+      };
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `night-shift-backup_${new Date().toISOString().slice(0,10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    function importData(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const data = JSON.parse(e.target.result);
+          shifts = data.shifts || {};
+          if (data.month) selectedMonth = data.month;
+          if (data.settings) settings = data.settings;
+          saveToStorage();
+          document.getElementById('monthInput').value = selectedMonth;
+          loadSettingsUI();
+          renderCalendar();
+          alert('数据导入成功！');
+        } catch (err) {
+          console.error(err);
+          alert('导入失败：文件格式错误');
+        }
+      };
+      reader.readAsText(file);
+      event.target.value = '';
+    }
+
+    // ========== 日历渲染（简化保留） ==========
+    function renderCalendar() {
+      const monthInput = document.getElementById('monthInput').value;
+      if (!monthInput) return;
+      selectedMonth = monthInput;
+      saveToStorage();
+
+      const year = parseInt(selectedMonth.split('-')[0]);
+      const month = parseInt(selectedMonth.split('-')[1]) - 1;
+
+      const firstDay = new Date(year, month, 1);
+      const lastDay = new Date(year, month + 1, 0);
+      const daysInMonth = lastDay.getDate();
+
+      const calendarEl = document.getElementById('calendar');
+      calendarEl.innerHTML = '';
+
+      let cols = 7;
+      let showHeaders = true;
+      if (currentView === 'cycle') {
+        cols = 6;
+        showHeaders = false;
+      }
+
+      if (showHeaders) {
+        ['日', '一', '二', '三', '四', '五', '六'].forEach(day => {
+          const header = document.createElement('div');
+          header.className = 'day-header';
+          header.textContent = day;
+          calendarEl.appendChild(header);
+        });
+      }
+
+      if (currentView === 'week') {
+        const startDayOfWeek = firstDay.getDay();
+        for (let i = 0; i < startDayOfWeek; i++) {
+          calendarEl.appendChild(document.createElement('div'));
+        }
+      }
+
+      calendarEl.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+
+      for (let day = 1; day <= daysInMonth; day++) {
+        const dateStr = `${selectedMonth}-${String(day).padStart(2, '0')}`;
+        const cell = document.createElement('div');
+        cell.className = 'day-cell';
+        cell.dataset.date = dateStr;
+
+        const numberSpan = document.createElement('span');
+        numberSpan.className = 'day-number';
+        numberSpan.textContent = day;
+
+        const hoursSpan = document.createElement('span');
+        hoursSpan.className = 'day-hours';
+
+        const extraSpan = document.createElement('span');
+        extraSpan.className = 'day-extra';
+
+        const totalSpan = document.createElement('span');
+        totalSpan.className = 'day-total';
+
+        const baseHours = getBaseHours(dateStr);
+        const extraHours = getExtraHours(dateStr);
+        const totalHours = baseHours + extraHours;
+
+        hoursSpan.textContent = baseHours > 0 ? baseHours.toFixed(1) : '';
+        if (extraHours !== 0) {
+          const sign = extraHours >= 0 ? '+' : '';
+          extraSpan.textContent = `${sign}${Math.abs(extraHours).toFixed(2)}h`;
+        } else {
+          extraSpan.textContent = '';
+        }
+        if (extraHours !== 0) {
+          totalSpan.textContent = `=${totalHours.toFixed(2)}h`;
+        } else {
+          totalSpan.textContent = '';
+        }
+
+        cell.appendChild(numberSpan);
+        if (baseHours > 0 || extraHours !== 0) {
+          cell.appendChild(hoursSpan);
+          if (extraHours !== 0) {
+            cell.appendChild(extraSpan);
+            cell.appendChild(totalSpan);
+          }
+        }
+
+        cell.addEventListener('click', (e) => {
+          if (e.ctrlKey || e.metaKey) {
+            toggleMultiSelect(dateStr, cell);
+          } else {
+            clearMultiSelectUI();
+            multiSelectedDates.clear();
+          }
+        });
+
+        cell.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          rightClickedDate = dateStr;
+          const menu = document.getElementById('contextMenu');
+          menu.style.display = 'block';
+          menu.style.left = e.pageX + 'px';
+          menu.style.top = e.pageY + 'px';
+        });
+
+        updateCellClass(cell, dateStr);
+        calendarEl.appendChild(cell);
+      }
+
+      document.addEventListener('click', () => {
+        document.getElementById('contextMenu').style.display = 'none';
+      });
+
+      checkCompliance();
+      updateShiftInfo();
+      updateWeekSummary();
+    }
+
+    // ========== 工具函数（保留关键） ==========
+    function toggleMultiSelect(dateStr, cell) {
+      if (multiSelectedDates.has(dateStr)) {
+        multiSelectedDates.delete(dateStr);
+        cell.classList.remove('multi-selected');
+      } else {
+        multiSelectedDates.add(dateStr);
+        cell.classList.add('multi-selected');
+      }
+    }
+
+    function clearMultiSelectUI() {
+      document.querySelectorAll('.day-cell.multi-selected').forEach(el => {
+        el.classList.remove('multi-selected');
+      });
+    }
+
+    function updateCellClass(cell, dateStr) {
+      cell.classList.remove('selected-big', 'selected-small', 'custom', 'over-limit');
+      const shift = shifts[dateStr];
+      if (shift) {
+        if (shift.type === 'big') cell.classList.add('selected-big');
+        else if (shift.type === 'small') cell.classList.add('selected-small');
+        else if (shift.type === 'custom') cell.classList.add('custom');
+      }
+    }
+
+    function applyShiftToSelected(type) {
+      if (multiSelectedDates.size === 0) {
+        alert('请先按住 Ctrl/Cmd 选择至少一个日期');
+        return;
+      }
+
+      multiSelectedDates.forEach(dateStr => {
+        if (type === 'big') {
+          shifts[dateStr] = { type: 'big', hours: settings.bigMain, nextDayHours: settings.bigNext };
+          const next = new Date(dateStr);
+          next.setDate(next.getDate() + 1);
+          const nextStr = next.toISOString().split('T')[0];
+          if (!shifts[nextStr] || shifts[nextStr].type !== 'auto-next') {
+            shifts[nextStr] = { type: 'auto-next', hours: 0 };
+          }
+        } else if (type === 'small') {
+          shifts[dateStr] = { type: 'small', hours: settings.small };
+        }
+        if (shifts[dateStr].extra !== undefined) delete shifts[dateStr].extra;
+        if (shifts[dateStr].extraMeta) delete shifts[dateStr].extraMeta;
+      });
+
+      saveToStorage();
+      clearMultiSelectUI();
+      multiSelectedDates.clear();
+      renderCalendar();
+    }
+
+    function deleteSelected() {
+      if (multiSelectedDates.size === 0) {
+        alert('请先选择要删除的日期');
+        return;
+      }
+
+      multiSelectedDates.forEach(dateStr => {
+        const shift = shifts[dateStr];
+        delete shifts[dateStr];
+
+        if (shift && shift.type === 'big') {
+          const next = new Date(dateStr);
+          next.setDate(next.getDate() + 1);
+          const nextStr = next.toISOString().split('T')[0];
+          if (shifts[nextStr] && shifts[nextStr].type === 'auto-next') {
+            delete shifts[nextStr];
+          }
+        }
+      });
+
+      saveToStorage();
+      clearMultiSelectUI();
+      multiSelectedDates.clear();
+      renderCalendar();
+    }
+
+    function deleteSingleShift() {
+      if (!rightClickedDate) return;
+      const shift = shifts[rightClickedDate];
+      delete shifts[rightClickedDate];
+
+      if (shift && shift.type === 'big') {
+        const next = new Date(rightClickedDate);
+        next.setDate(next.getDate() + 1);
+        const nextStr = next.toISOString().split('T')[0];
+        if (shifts[nextStr] && shifts[nextStr].type === 'auto-next') {
+          delete shifts[nextStr];
+        }
+      }
+
+      saveToStorage();
+      document.getElementById('contextMenu').style.display = 'none';
+      renderCalendar();
+    }
+
+    function clearSelected() {
+      clearMultiSelectUI();
+      multiSelectedDates.clear();
+    }
+
+    function openExtraModal() {
+      if (multiSelectedDates.size === 0) {
+        alert('请先选择至少一个日期');
+        return;
+      }
+      document.getElementById('extraInput').value = '';
+      document.querySelector('input[name="unit"][value="hour"]').checked = true;
+      document.getElementById('extraModal').style.display = 'flex';
+    }
+
+    function closeExtraModal() {
+      document.getElementById('extraModal').style.display = 'none';
+    }
+
+    function applyExtra() {
+      const inputEl = document.getElementById('extraInput');
+      const valueStr = inputEl.value.trim();
+      if (!valueStr) {
+        closeExtraModal();
+        return;
+      }
+
+      const value = parseFloat(valueStr);
+      if (isNaN(value)) {
+        alert('请输入有效数字');
+        return;
+      }
+
+      const unitRadio = document.querySelector('input[name="unit"]:checked');
+      if (!unitRadio) {
+        alert('请选择单位（小时或分钟）');
+        return;
+      }
+      const unit = unitRadio.value;
+
+      let extraHours = 0;
+      if (unit === 'hour') {
+        extraHours = value;
+      } else {
+        extraHours = value / 60;
+      }
+
+      multiSelectedDates.forEach(dateStr => {
+        if (!shifts[dateStr]) {
+          shifts[dateStr] = { type: 'custom', hours: 0 };
+        }
+        shifts[dateStr].extra = (shifts[dateStr].extra || 0) + extraHours;
+        shifts[dateStr].extraMeta = { value, unit };
+        if (Math.abs(shifts[dateStr].extra) < 0.001) {
+          delete shifts[dateStr].extra;
+          delete shifts[dateStr].extraMeta;
+        }
+      });
+
+      saveToStorage();
+      closeExtraModal();
+      clearMultiSelectUI();
+      multiSelectedDates.clear();
+      renderCalendar();
+    }
+
+    function getBaseHours(dateStr) {
+      const shift = shifts[dateStr];
+      if (!shift) return 0;
+      if (shift.type === 'big') return shift.hours;
+      if (shift.type === 'auto-next') {
+        const prev = new Date(dateStr);
+        prev.setDate(prev.getDate() - 1);
+        const prevStr = prev.toISOString().split('T')[0];
+        const prevShift = shifts[prevStr];
+        return prevShift && prevShift.type === 'big' ? prevShift.nextDayHours : 0;
+      }
+      return shift.hours || 0;
+    }
+
+    function getExtraHours(dateStr) {
+      const shift = shifts[dateStr];
+      return shift && shift.extra ? shift.extra : 0;
+    }
+
+    function getDailyHours(dateStr) {
+      return getBaseHours(dateStr) + getExtraHours(dateStr);
+    }
+
+    function calculateMonthlyTotalHours(monthKey) {
+      const [yearStr, monthStr] = monthKey.split('-');
+      const year = parseInt(yearStr);
+      const month = parseInt(monthStr) - 1;
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+      let total = 0;
+      for (let day = 1; day <= daysInMonth; day++) {
+        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        total += getDailyHours(dateStr);
+      }
+      return total;
+    }
+
+    function generateAllRelevant7DayWindows() {
+      const [yearStr, monthStr] = selectedMonth.split('-');
+      const year = parseInt(yearStr);
+      const month = parseInt(monthStr) - 1;
+
+      const firstOfMonth = new Date(year, month, 1);
+      const lastOfMonth = new Date(year, month + 1, 0);
+
+      const startDate = new Date(firstOfMonth);
+      startDate.setDate(startDate.getDate() - 6);
+
+      const windows = [];
+      let current = new Date(startDate);
+
+      while (true) {
+        const windowEnd = new Date(current);
+        windowEnd.setDate(current.getDate() + 6);
+
+        if (current > lastOfMonth) break;
+
+        if (windowEnd >= firstOfMonth && current <= lastOfMonth) {
+          windows.push({
+            start: new Date(current),
+            end: new Date(windowEnd)
+          });
+        }
+
+        current.setDate(current.getDate() + 1);
+      }
+
+      return windows;
+    }
+
+    function checkCompliance() {
+      const windows = generateAllRelevant7DayWindows();
+      weekSummaries = [];
+      const overLimitDates = new Set();
+
+      windows.forEach(w => {
+        let total = 0;
+        const datesInRange = [];
+        for (let i = 0; i < 7; i++) {
+          const d = new Date(w.start);
+          d.setDate(d.getDate() + i);
+          const iso = d.toISOString().split('T')[0];
+          datesInRange.push(iso);
+          total += getDailyHours(iso);
+        }
+
+        const violation = total > settings.limit;
+        weekSummaries.push({
+          start: w.start.toISOString().split('T')[0],
+          end: w.end.toISOString().split('T')[0],
+          total: total,
+          dates: datesInRange,
+          violation: violation
+        });
+
+        if (violation) {
+          datesInRange.forEach(d => overLimitDates.add(d));
+        }
+      });
+
+      document.querySelectorAll('.day-cell').forEach(cell => {
+        const dateStr = cell.dataset.date;
+        if (dateStr && overLimitDates.has(dateStr)) {
+          cell.classList.add('over-limit');
+        } else {
+          cell.classList.remove('over-limit');
+        }
+      });
+    }
+
+    function updateShiftInfo() {
+      const total = calculateMonthlyTotalHours(selectedMonth);
+      const hasOverLimit = weekSummaries.some(w => w.violation);
+
+      const infoEl = document.getElementById('shiftInfo');
+      infoEl.innerHTML = `
+        <p>本月总工时：${total.toFixed(2)} 小时</p>
+        <div class="result ${hasOverLimit ? 'warn' : 'ok'}">
+          ${hasOverLimit ? `⚠️ 警告：存在连续7天工时超过 ${settings.limit} 小时！` : `✅ 当前安排符合规定（任意7天≤${settings.limit}小时）`}
+        </div>
+      `;
+    }
+
+    function updateWeekSummary() {
+      const listEl = document.getElementById('weekList');
+      if (weekSummaries.length === 0) {
+        listEl.innerHTML = '<p>暂无7天周期数据</p>';
+        return;
+      }
+
+      let html = '';
+      weekSummaries.forEach(w => {
+        const cls = w.violation ? 'week-item violation' : 'week-item';
+        const startDisp = formatDate(w.start);
+        const endDisp = formatDate(w.end);
+        html += `<div class="${cls}">${startDisp} 至 ${endDisp}：${w.total.toFixed(2)} 小时</div>`;
+      });
+      listEl.innerHTML = html;
+    }
+
+    function formatDate(isoDate) {
+      const d = new Date(isoDate);
+      return `${d.getMonth() + 1}/${d.getDate()}`;
+    }
+
+    // ========== 高级统计分析 ==========
+    function initDateRangeForStats() {
+      const today = new Date();
+      const oneYearAgo = new Date();
+      oneYearAgo.setFullYear(today.getFullYear() - 1);
+
+      const formatDateInput = d => d.toISOString().split('T')[0];
+      document.getElementById('statStartDate').value = formatDateInput(oneYearAgo);
+      document.getElementById('statEndDate').value = formatDateInput(today);
+    }
+
+    function getMonthsBetween(start, end) {
+      const months = [];
+      const current = new Date(start);
+      while (current <= end) {
+        const key = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}`;
+        months.push(key);
+        current.setMonth(current.getMonth() + 1);
+      }
+      return months;
+    }
+
+    function renderStatsWithRange() {
+      const startInput = document.getElementById('statStartDate').value;
+      const endInput = document.getElementById('statEndDate').value;
+
+      if (!startInput || !endInput) {
+        alert('请选择完整的起止日期');
+        return;
+      }
+
+      const startDate = new Date(startInput);
+      const endDate = new Date(endInput);
+      if (startDate > endDate) {
+        alert('开始日期不能晚于结束日期');
+        return;
+      }
+
+      const allMonths = getMonthsBetween(startDate, endDate);
+
+      let totalWorkDays = 0;
+      let totalHours = 0;
+      let bigCount = 0, smallCount = 0, customCount = 0;
+      let workedDates = [];
+
+      // 遍历每一天
+      const currentDate = new Date(startDate);
+      while (currentDate <= endDate) {
+        const dateStr = currentDate.toISOString().split('T')[0];
+        const h = getDailyHours(dateStr);
+        if (h > 0) {
+          totalHours += h;
+          totalWorkDays++;
+          workedDates.push(new Date(dateStr));
+
+          const shift = shifts[dateStr];
+          if (shift) {
+            if (shift.type === 'big') bigCount++;
+            else if (shift.type === 'small') smallCount++;
+            else if (shift.type === 'custom') customCount++;
+          }
+        }
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
+
+      // 计算最长连续工作天数
+      let maxConsecutive = 0;
+      if (workedDates.length > 0) {
+        workedDates.sort((a, b) => a - b);
+        let currentStreak = 1;
+        maxConsecutive = 1;
+        for (let i = 1; i < workedDates.length; i++) {
+          const diff = (workedDates[i] - workedDates[i - 1]) / (1000 * 60 * 60 * 24);
+          if (diff === 1) {
+            currentStreak++;
+            maxConsecutive = Math.max(maxConsecutive, currentStreak);
+          } else {
+            currentStreak = 1;
+          }
+        }
+      }
+
+      const totalMonths = allMonths.length;
+      const avgMonthlyHours = totalMonths > 0 ? (totalHours / totalMonths) : 0;
+      const avgDailyHours = totalWorkDays > 0 ? (totalHours / totalWorkDays) : 0;
+
+      const stats = [
+        { label: '统计时间段', value: `${startInput} 至 ${endInput}` },
+        { label: '总工时', value: `${totalHours.toFixed(2)} 小时` },
+        { label: '平均每月工时', value: `${avgMonthlyHours.toFixed(2)} 小时` },
+        { label: '工作天数', value: `${totalWorkDays} 天` },
+        { label: '平均每日工时', value: `${avgDailyHours.toFixed(2)} 小时` },
+        { label: '大夜班次数', value: `${bigCount} 次` },
+        { label: '小夜班次数', value: `${smallCount} 次` },
+        { label: '自定义班次', value: `${customCount} 次` },
+        { label: '最长连续工作', value: `${maxConsecutive} 天` },
+        { label: '覆盖月份数', value: `${totalMonths} 个月` }
+      ];
+
+      const grid = document.getElementById('statsGrid');
+      grid.innerHTML = '';
+      stats.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'stat-item';
+        div.innerHTML = `<div>${item.label}</div><div class="stat-value">${item.value}</div>`;
+        grid.appendChild(div);
+      });
+
+      // 绘制图表
+      renderMonthlyChart(allMonths);
+    }
+
+    function renderMonthlyChart(monthKeys) {
+      const labels = [];
+      const data = [];
+
+      monthKeys.forEach(m => {
+        const total = calculateMonthlyTotalHours(m);
+        const [y, mNum] = m.split('-');
+        labels.push(`${y}-${mNum}`);
+        data.push(parseFloat(total.toFixed(2)));
+      });
+
+      const ctx = document.getElementById('monthlyChart').getContext('2d');
+
+      if (chartInstance) {
+        chartInstance.destroy();
+      }
+
+      chartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: '每月总工时（小时）',
+            data: data,
+            backgroundColor: 'rgba(24, 144, 255, 0.6)',
+            borderColor: 'rgba(24, 144, 255, 1)',
+            borderWidth: 1
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            y: {
+              beginAtZero: true,
+              title: { display: true, text: '工时（小时）' }
+            },
+            x: {
+              title: { display: true, text: '月份' }
+            }
+          },
+          plugins: {
+            legend: { display: true },
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  return `工时: ${context.parsed.y} 小时`;
+                }
+              }
+            }
+          }
+        }
+      });
+    }
+
+    // ========== 初始化 ==========
+    window.onload = () => {
+      loadSettingsUI();
+      renderCalendar();
+    };
+
+    window.onclick = (e) => {
+      if (e.target.id === 'extraModal') closeExtraModal();
+    };
+  </script>
+</body>
+</html>
+
+
