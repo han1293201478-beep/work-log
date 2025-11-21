@@ -6,6 +6,8 @@
   <title>夜班工时合规检查器（含高级统计 & 图表）</title>
   <!-- 引入 Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- 引入 Supabase SDK -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     /* ========== 原有样式保留 ========== */
     body {
@@ -255,6 +257,13 @@
       font-size: 14px;
       display: inline-block;
     }
+
+    /* 新增：同步状态指示器 */
+    .sync-status {
+      font-size: 12px;
+      color: #666;
+      margin-top: 4px;
+    }
   </style>
 </head>
 <body>
@@ -291,6 +300,7 @@
       <div class="controls">
         <p id="multiSelectHint">• 长按任意日期进入多选模式 → 点击切换选中｜<strong>右键</strong> 单个日期 → 删除</p>
         <div id="selectionModeIndicator" class="selection-mode-indicator" style="display: none;">多选模式（点击日期切换选中）</div>
+        <div id="syncStatus" class="sync-status">🔄 数据同步中...</div>
         <button class="btn-big" onclick="applyShiftToSelected('big')">设为大夜班</button>
         <button class="btn-small" onclick="applyShiftToSelected('small')">设为小夜班</button>
         <button class="btn-delete" onclick="deleteSelected()">删除所选</button>
@@ -402,8 +412,16 @@
   </div>
 
   <script>
-    // ============ 数据存储 ============
-    let shifts = JSON.parse(localStorage.getItem('shifts_edge_sync') || '{}');
+    // ========== Supabase 初始化 ==========
+    const supabase = createClient(
+      'https://morkovixfwdsaknmwavj.supabase.co',
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1vcmtvdml4Zndkc2Frbm13YXZqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM3MzM1NDIsImV4cCI6MjA3OTMwOTU0Mn0.wh-UEaQyr3bpJBQkCrzJpRR5v4NvRpx3LsnsAo-DGqE'
+    );
+
+    // ========== 数据存储 ============
+    let localShifts = {}; // 本地缓存（用于快速渲染）
+    let currentUserId = null; // Supabase 用户ID
+    let isSyncing = false; // 同步状态
     let selectedMonth = localStorage.getItem('selectedMonth_edge_sync') || new Date().toISOString().slice(0, 7);
 
     const defaultSettings = {
@@ -424,8 +442,129 @@
     // 新增：多选模式状态
     let isMultiSelectMode = false;
 
+    // ========== 初始化用户和数据 ==========
+    async function initUserAndLoadData() {
+      try {
+        // 尝试获取当前会话
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (session) {
+          currentUserId = session.user.id;
+        } else {
+          // 匿名登录
+          const { error } = await supabase.auth.signInAnonymously();
+          if (error) throw error;
+          
+          const { data: { session: newSession } } = await supabase.auth.getSession();
+          currentUserId = newSession.user.id;
+        }
+
+        console.log('✅ 用户ID:', currentUserId);
+        await loadShiftsFromDB();
+        document.getElementById('syncStatus').textContent = '✅ 数据已同步';
+      } catch (err) {
+        console.error('❌ 初始化失败:', err.message);
+        document.getElementById('syncStatus').textContent = '⚠️ 连接失败，请检查网络';
+        alert('⚠️ 无法连接数据库，请检查网络或稍后重试');
+      }
+    }
+
+    // ========== 从数据库加载班次 ==========
+    async function loadShiftsFromDB() {
+      if (!currentUserId) return;
+
+      const { data, error } = await supabase
+        .from('shifts')
+        .select('date, type, hours, next_day_hours, extra, extra_meta')
+        .eq('user_id', currentUserId);
+
+      if (error) {
+        console.error('加载数据失败:', error);
+        return;
+      }
+
+      localShifts = {};
+      data.forEach(row => {
+        localShifts[row.date] = {
+          type: row.type || '',
+          hours: row.hours || 0,
+          nextDayHours: row.next_day_hours || 0,
+          extra: row.extra !== null ? row.extra : undefined,
+          extraMeta: row.extra_meta || undefined
+        };
+      });
+
+      renderCalendar(); // 渲染日历
+    }
+
+    // ========== 保存单个日期到数据库 ==========
+    async function saveShiftToDB(dateStr, shiftData) {
+      if (!currentUserId || !dateStr) return;
+
+      // 删除旧记录（避免重复）
+      await supabase
+        .from('shifts')
+        .delete()
+        .eq('user_id', currentUserId)
+        .eq('date', dateStr);
+
+      // 如果有有效数据，插入新记录
+      if (shiftData.type && (shiftData.hours > 0 || (shiftData.extra !== undefined && shiftData.extra !== 0))) {
+        await supabase.from('shifts').insert({
+          user_id: currentUserId,
+          date: dateStr,
+          type: shiftData.type,
+          hours: shiftData.hours,
+          next_day_hours: shiftData.nextDayHours,
+          extra: shiftData.extra,
+          extra_meta: shiftData.extraMeta
+        });
+      }
+    }
+
+    // ========== 批量同步（优化性能）==========
+    async function syncAllShifts() {
+      if (isSyncing || !currentUserId) return;
+      isSyncing = true;
+      document.getElementById('syncStatus').textContent = '🔄 同步中...';
+
+      try {
+        // 获取云端已有日期
+        const { data: cloudRecords } = await supabase
+          .from('shifts')
+          .select('date')
+          .eq('user_id', currentUserId);
+        
+        const cloudDates = new Set(cloudRecords.map(r => r.date));
+        const localDates = new Set(Object.keys(localShifts));
+
+        // 1. 上传本地新增/修改的记录
+        for (const date of localDates) {
+          await saveShiftToDB(date, localShifts[date]);
+        }
+
+        // 2. 删除云端多余记录（本地已删）
+        for (const date of cloudDates) {
+          if (!localDates.has(date)) {
+            await supabase
+              .from('shifts')
+              .delete()
+              .eq('user_id', currentUserId)
+              .eq('date', date);
+          }
+        }
+        
+        document.getElementById('syncStatus').textContent = '✅ 数据已同步';
+      } catch (err) {
+        console.error('同步失败:', err);
+        document.getElementById('syncStatus').textContent = '⚠️ 同步失败';
+      } finally {
+        isSyncing = false;
+      }
+    }
+
+    // ========== 保存设置 ==========
     function saveToStorage() {
-      localStorage.setItem('shifts_edge_sync', JSON.stringify(shifts));
       localStorage.setItem('selectedMonth_edge_sync', selectedMonth);
       localStorage.setItem('shifts_settings', JSON.stringify(settings));
     }
@@ -499,7 +638,7 @@
     function exportData() {
       const data = {
         version: 'edge-sync-v3',
-        shifts: shifts,
+        shifts: localShifts, // ← 改用 localShifts
         month: selectedMonth,
         settings: settings
       };
@@ -518,16 +657,17 @@
       const file = event.target.files[0];
       if (!file) return;
       const reader = new FileReader();
-      reader.onload = function(e) {
+      reader.onload = async function(e) {
         try {
           const data = JSON.parse(e.target.result);
-          shifts = data.shifts || {};
+          localShifts = data.shifts || {};
           if (data.month) selectedMonth = data.month;
           if (data.settings) settings = data.settings;
           saveToStorage();
           document.getElementById('monthInput').value = selectedMonth;
           loadSettingsUI();
           renderCalendar();
+          await syncAllShifts(); // 同步到云端
           alert('数据导入成功！');
         } catch (err) {
           console.error(err);
@@ -709,7 +849,7 @@
 
     function updateCellClass(cell, dateStr) {
       cell.classList.remove('selected-big', 'selected-small', 'custom', 'over-limit');
-      const shift = shifts[dateStr];
+      const shift = localShifts[dateStr]; // ← 改用 localShifts
       if (shift) {
         if (shift.type === 'big') cell.classList.add('selected-big');
         else if (shift.type === 'small') cell.classList.add('selected-small');
@@ -738,26 +878,26 @@
 
       multiSelectedDates.forEach(dateStr => {
         if (type === 'big') {
-          shifts[dateStr] = { type: 'big', hours: settings.bigMain, nextDayHours: settings.bigNext };
+          localShifts[dateStr] = { type: 'big', hours: settings.bigMain, nextDayHours: settings.bigNext };
           const next = new Date(dateStr);
           next.setDate(next.getDate() + 1);
           const nextStr = next.toISOString().split('T')[0];
-          if (!shifts[nextStr] || shifts[nextStr].type !== 'auto-next') {
-            shifts[nextStr] = { type: 'auto-next', hours: 0 };
+          if (!localShifts[nextStr] || localShifts[nextStr].type !== 'auto-next') {
+            localShifts[nextStr] = { type: 'auto-next', hours: 0 };
           }
         } else if (type === 'small') {
-          shifts[dateStr] = { type: 'small', hours: settings.small };
+          localShifts[dateStr] = { type: 'small', hours: settings.small };
         }
-        if (shifts[dateStr].extra !== undefined) delete shifts[dateStr].extra;
-        if (shifts[dateStr].extraMeta) delete shifts[dateStr].extraMeta;
+        if (localShifts[dateStr].extra !== undefined) delete localShifts[dateStr].extra;
+        if (localShifts[dateStr].extraMeta) delete localShifts[dateStr].extraMeta;
       });
 
-      saveToStorage();
       clearMultiSelectUI();
       multiSelectedDates.clear();
       isMultiSelectMode = false;
       updateMultiSelectUI();
       renderCalendar();
+      syncAllShifts(); // ← 同步到云端
     }
 
     function deleteSelected() {
@@ -767,44 +907,44 @@
       }
 
       multiSelectedDates.forEach(dateStr => {
-        const shift = shifts[dateStr];
-        delete shifts[dateStr];
+        const shift = localShifts[dateStr];
+        delete localShifts[dateStr];
 
         if (shift && shift.type === 'big') {
           const next = new Date(dateStr);
           next.setDate(next.getDate() + 1);
           const nextStr = next.toISOString().split('T')[0];
-          if (shifts[nextStr] && shifts[nextStr].type === 'auto-next') {
-            delete shifts[nextStr];
+          if (localShifts[nextStr] && localShifts[nextStr].type === 'auto-next') {
+            delete localShifts[nextStr];
           }
         }
       });
 
-      saveToStorage();
       clearMultiSelectUI();
       multiSelectedDates.clear();
       isMultiSelectMode = false;
       updateMultiSelectUI();
       renderCalendar();
+      syncAllShifts(); // ← 同步到云端
     }
 
     function deleteSingleShift() {
       if (!rightClickedDate) return;
-      const shift = shifts[rightClickedDate];
-      delete shifts[rightClickedDate];
+      const shift = localShifts[rightClickedDate];
+      delete localShifts[rightClickedDate];
 
       if (shift && shift.type === 'big') {
         const next = new Date(rightClickedDate);
         next.setDate(next.getDate() + 1);
         const nextStr = next.toISOString().split('T')[0];
-        if (shifts[nextStr] && shifts[nextStr].type === 'auto-next') {
-          delete shifts[nextStr];
+        if (localShifts[nextStr] && localShifts[nextStr].type === 'auto-next') {
+          delete localShifts[nextStr];
         }
       }
 
-      saveToStorage();
       document.getElementById('contextMenu').style.display = 'none';
       renderCalendar();
+      syncAllShifts(); // ← 同步到云端
     }
 
     function clearSelected() {
@@ -857,42 +997,42 @@
       }
 
       multiSelectedDates.forEach(dateStr => {
-        if (!shifts[dateStr]) {
-          shifts[dateStr] = { type: 'custom', hours: 0 };
+        if (!localShifts[dateStr]) {
+          localShifts[dateStr] = { type: 'custom', hours: 0 };
         }
-        shifts[dateStr].extra = (shifts[dateStr].extra || 0) + extraHours;
-        shifts[dateStr].extraMeta = { value, unit };
-        if (Math.abs(shifts[dateStr].extra) < 0.001) {
-          delete shifts[dateStr].extra;
-          delete shifts[dateStr].extraMeta;
+        localShifts[dateStr].extra = (localShifts[dateStr].extra || 0) + extraHours;
+        localShifts[dateStr].extraMeta = { value, unit };
+        if (Math.abs(localShifts[dateStr].extra) < 0.001) {
+          delete localShifts[dateStr].extra;
+          delete localShifts[dateStr].extraMeta;
         }
       });
 
-      saveToStorage();
       closeExtraModal();
       clearMultiSelectUI();
       multiSelectedDates.clear();
       isMultiSelectMode = false;
       updateMultiSelectUI();
       renderCalendar();
+      syncAllShifts(); // ← 同步到云端
     }
 
     function getBaseHours(dateStr) {
-      const shift = shifts[dateStr];
+      const shift = localShifts[dateStr]; // ← 改用 localShifts
       if (!shift) return 0;
       if (shift.type === 'big') return shift.hours;
       if (shift.type === 'auto-next') {
         const prev = new Date(dateStr);
         prev.setDate(prev.getDate() - 1);
         const prevStr = prev.toISOString().split('T')[0];
-        const prevShift = shifts[prevStr];
+        const prevShift = localShifts[prevStr];
         return prevShift && prevShift.type === 'big' ? prevShift.nextDayHours : 0;
       }
       return shift.hours || 0;
     }
 
     function getExtraHours(dateStr) {
-      const shift = shifts[dateStr];
+      const shift = localShifts[dateStr]; // ← 改用 localShifts
       return shift && shift.extra ? shift.extra : 0;
     }
 
@@ -1077,7 +1217,7 @@
           totalWorkDays++;
           workedDates.push(new Date(dateStr));
 
-          const shift = shifts[dateStr];
+          const shift = localShifts[dateStr]; // ← 改用 localShifts
           if (shift) {
             if (shift.type === 'big') bigCount++;
             else if (shift.type === 'small') smallCount++;
@@ -1192,7 +1332,7 @@
     // ========== 初始化 ==========
     window.onload = () => {
       loadSettingsUI();
-      renderCalendar();
+      initUserAndLoadData(); // ← 启动 Supabase 初始化
     };
 
     window.onclick = (e) => {
@@ -1201,3 +1341,5 @@
   </script>
 </body>
 </html>
+
+
