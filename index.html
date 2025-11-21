@@ -245,6 +245,16 @@
       position: relative;
       height: 300px;
     }
+
+    /* 新增：多选模式指示器 */
+    .selection-mode-indicator {
+      background: #1890ff;
+      color: white;
+      padding: 6px 12px;
+      border-radius: 4px;
+      font-size: 14px;
+      display: inline-block;
+    }
   </style>
 </head>
 <body>
@@ -279,7 +289,8 @@
       </div>
 
       <div class="controls">
-        <p>• 按住 <strong>Ctrl/Cmd</strong> 多选 → 批量操作｜<strong>右键</strong> 单个日期 → 删除</p>
+        <p id="multiSelectHint">• 长按任意日期进入多选模式 → 点击切换选中｜<strong>右键</strong> 单个日期 → 删除</p>
+        <div id="selectionModeIndicator" class="selection-mode-indicator" style="display: none;">多选模式（点击日期切换选中）</div>
         <button class="btn-big" onclick="applyShiftToSelected('big')">设为大夜班</button>
         <button class="btn-small" onclick="applyShiftToSelected('small')">设为小夜班</button>
         <button class="btn-delete" onclick="deleteSelected()">删除所选</button>
@@ -409,6 +420,9 @@
     let rightClickedDate = '';
     let weekSummaries = [];
     let chartInstance = null;
+
+    // 新增：多选模式状态
+    let isMultiSelectMode = false;
 
     function saveToStorage() {
       localStorage.setItem('shifts_edge_sync', JSON.stringify(shifts));
@@ -611,10 +625,43 @@
           }
         }
 
+        // 新增：长按多选逻辑
+        cell.addEventListener('mousedown', (e) => {
+          if (e.button === 0) { // 左键
+            if (e.ctrlKey || e.metaKey) {
+              // 电脑：Ctrl+点击
+              toggleMultiSelect(dateStr, cell);
+              isMultiSelectMode = true;
+              updateMultiSelectUI();
+            }
+          }
+        });
+
+        // 触屏长按逻辑
+        let longPressTimer = null;
+        cell.addEventListener('touchstart', (e) => {
+          e.preventDefault(); // 防止默认滚动行为
+          longPressTimer = setTimeout(() => {
+            // 长按进入多选模式
+            isMultiSelectMode = true;
+            updateMultiSelectUI();
+            toggleMultiSelect(dateStr, cell);
+          }, 500); // 500ms 长按
+        });
+
+        cell.addEventListener('touchend', (e) => {
+          if (longPressTimer) {
+            clearTimeout(longPressTimer);
+            longPressTimer = null;
+          }
+        });
+
         cell.addEventListener('click', (e) => {
-          if (e.ctrlKey || e.metaKey) {
+          if (isMultiSelectMode) {
+            // 多选模式：点击切换选中
             toggleMultiSelect(dateStr, cell);
           } else {
+            // 单选模式：清除之前选择，只选这一个
             clearMultiSelectUI();
             multiSelectedDates.clear();
           }
@@ -651,6 +698,7 @@
         multiSelectedDates.add(dateStr);
         cell.classList.add('multi-selected');
       }
+      updateMultiSelectUI();
     }
 
     function clearMultiSelectUI() {
@@ -669,9 +717,22 @@
       }
     }
 
+    // 新增：更新多选UI状态
+    function updateMultiSelectUI() {
+      const indicator = document.getElementById('selectionModeIndicator');
+      const hint = document.getElementById('multiSelectHint');
+      if (isMultiSelectMode) {
+        indicator.style.display = 'inline-block';
+        hint.style.display = 'none';
+      } else {
+        indicator.style.display = 'none';
+        hint.style.display = 'block';
+      }
+    }
+
     function applyShiftToSelected(type) {
       if (multiSelectedDates.size === 0) {
-        alert('请先按住 Ctrl/Cmd 选择至少一个日期');
+        alert('请先选择至少一个日期');
         return;
       }
 
@@ -694,6 +755,8 @@
       saveToStorage();
       clearMultiSelectUI();
       multiSelectedDates.clear();
+      isMultiSelectMode = false;
+      updateMultiSelectUI();
       renderCalendar();
     }
 
@@ -720,6 +783,8 @@
       saveToStorage();
       clearMultiSelectUI();
       multiSelectedDates.clear();
+      isMultiSelectMode = false;
+      updateMultiSelectUI();
       renderCalendar();
     }
 
@@ -745,6 +810,8 @@
     function clearSelected() {
       clearMultiSelectUI();
       multiSelectedDates.clear();
+      isMultiSelectMode = false;
+      updateMultiSelectUI();
     }
 
     function openExtraModal() {
@@ -805,6 +872,8 @@
       closeExtraModal();
       clearMultiSelectUI();
       multiSelectedDates.clear();
+      isMultiSelectMode = false;
+      updateMultiSelectUI();
       renderCalendar();
     }
 
@@ -1132,5 +1201,3 @@
   </script>
 </body>
 </html>
-
-
