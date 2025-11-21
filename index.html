@@ -3,76 +3,20 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>夜班工时合规检查器（云端同步版）</title>
+  <title>夜班工时合规检查器（稳定同步版）</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
-    /* ========== 原有样式保留 ========== */
-    body {
-      font-family: "Microsoft YaHei", sans-serif;
-      padding: 20px;
-      background-color: #f9f9f9;
-    }
-    .container {
-      max-width: 950px;
-      margin: 0 auto;
-      background: white;
-      padding: 20px;
-      border-radius: 10px;
-      box-shadow: 0 0 10px rgba(0,0,0,0.1);
-    }
-    h1, h2, h3 {
-      color: #333;
-    }
+    /* 样式保持不变... */
+    body { font-family: "Microsoft YaHei", sans-serif; padding: 20px; background-color: #f9f9f9; }
+    .container { max-width: 950px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+    h1, h2, h3 { color: #333; }
     h1 { text-align: center; }
-    .nav-tabs button {
-      margin: 0 6px;
-      padding: 6px 12px;
-      border: 1px solid #ccc;
-      background: #f5f5f5;
-      cursor: pointer;
-      border-radius: 4px;
-    }
-    .nav-tabs button.active {
-      background: #1890ff;
-      color: white;
-      border-color: #1890ff;
-    }
-
-    /* ========== 日历相关样式 ========== */
-    .month-picker, .view-toggle, .import-export, .nav-tabs, .controls {
-      text-align: center;
-      margin: 10px 0;
-    }
-    .calendar {
-      display: grid;
-      gap: 4px;
-      margin-top: 10px;
-    }
-    .day-header {
-      text-align: center;
-      font-weight: bold;
-      padding: 6px;
-      background: #eee;
-      border-radius: 4px;
-      font-size: 14px;
-    }
-    .day-cell {
-      height: 80px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      cursor: pointer;
-      background: #fff;
-      font-size: 14px;
-      user-select: none;
-      position: relative;
-      padding: 4px;
-      text-align: center;
-    }
+    .nav-tabs button { margin: 0 6px; padding: 6px 12px; border: 1px solid #ccc; background: #f5f5f5; cursor: pointer; border-radius: 4px; }
+    .nav-tabs button.active { background: #1890ff; color: white; border-color: #1890ff; }
+    .calendar { display: grid; gap: 4px; margin-top: 10px; }
+    .day-header { text-align: center; font-weight: bold; padding: 6px; background: #eee; border-radius: 4px; font-size: 14px; }
+    .day-cell { height: 80px; display: flex; flex-direction: column; align-items: center; justify-content: center; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; background: #fff; font-size: 14px; user-select: none; position: relative; padding: 4px; text-align: center; }
     .day-number { font-weight: bold; }
     .day-hours { font-size: 12px; color: #666; margin-top: 2px; }
     .day-extra { font-size: 11px; color: #999; }
@@ -83,15 +27,7 @@
     .day-cell.custom { background: #ffd6e7; border-color: #eb2f96; }
     .day-cell.over-limit { box-shadow: 0 0 0 3px red; }
     .day-cell.multi-selected { outline: 2px solid blue; z-index: 2; }
-
-    .controls button {
-      margin: 5px;
-      padding: 8px 12px;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 14px;
-    }
+    .controls button { margin: 5px; padding: 8px 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
     .btn-big { background: #faad14; color: white; }
     .btn-small { background: #52c41a; color: white; }
     .btn-clear { background: #d9d9d9; color: black; }
@@ -99,189 +35,52 @@
     .btn-extra { background: #722ed1; color: white; }
     .btn-settings { background: #13c2c2; color: white; }
     .btn-sync { background: #52c41a; color: white; }
-
-    .shift-info {
-      margin-top: 20px;
-      padding: 15px;
-      background: #f0f9ff;
-      border-radius: 6px;
-    }
-    .result {
-      margin-top: 10px;
-      padding: 8px;
-      border-radius: 4px;
-      font-weight: bold;
-    }
+    .shift-info { margin-top: 20px; padding: 15px; background: #f0f9ff; border-radius: 6px; }
+    .result { margin-top: 10px; padding: 8px; border-radius: 4px; font-weight: bold; }
     .ok { background: #f6ffed; color: #52c41a; }
     .warn { background: #fff2f0; color: #ff4d4f; }
-
-    .week-summary {
-      margin-top: 20px;
-    }
-    .week-list {
-      max-height: 300px;
-      overflow-y: auto;
-      border: 1px solid #eee;
-      border-radius: 6px;
-      padding: 10px;
-      background: #fafafa;
-    }
-    .week-item {
-      padding: 6px 0;
-      border-bottom: 1px solid #f0f0f0;
-      font-size: 14px;
-    }
-    .week-item.violation {
-      background: #fff2f0;
-      color: #ff4d4f;
-      font-weight: bold;
-    }
-
-    .modal {
-      display: none;
-      position: fixed;
-      top: 0; left: 0;
-      width: 100%; height: 100%;
-      background: rgba(0,0,0,0.5);
-      z-index: 3000;
-      justify-content: center;
-      align-items: center;
-    }
-    .modal-content {
-      background: white;
-      padding: 20px;
-      border-radius: 8px;
-      width: 320px;
-      text-align: left;
-    }
-    .modal h3 {
-      text-align: center;
-      margin-top: 0;
-    }
-    .modal input, .modal select {
-      width: 100%;
-      padding: 8px;
-      margin: 10px 0;
-      border: 1px solid #ccc;
-      border-radius: 4px;
-      box-sizing: border-box;
-    }
-    .modal-buttons {
-      text-align: center;
-      margin-top: 15px;
-    }
-    .modal-buttons button {
-      margin: 0 8px;
-    }
-
+    .week-summary { margin-top: 20px; }
+    .week-list { max-height: 300px; overflow-y: auto; border: 1px solid #eee; border-radius: 6px; padding: 10px; background: #fafafa; }
+    .week-item { padding: 6px 0; border-bottom: 1px solid #f0f0f0; font-size: 14px; }
+    .week-item.violation { background: #fff2f0; color: #ff4d4f; font-weight: bold; }
+    .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 3000; justify-content: center; align-items: center; }
+    .modal-content { background: white; padding: 20px; border-radius: 8px; width: 320px; text-align: left; }
+    .modal h3 { text-align: center; margin-top: 0; }
+    .modal input, .modal select { width: 100%; padding: 8px; margin: 10px 0; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+    .modal-buttons { text-align: center; margin-top: 15px; }
+    .modal-buttons button { margin: 0 8px; }
     #importFileInput { display: none; }
-
-    /* ========== 设置与统计面板 ========== */
-    .panel {
-      display: none;
-    }
-    .panel.active {
-      display: block;
-    }
-
-    .settings-grid, .stats-controls, .stats-grid {
-      display: grid;
-      gap: 15px;
-      margin-top: 15px;
-    }
-    .settings-grid {
-      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-    }
-    .setting-item, .stat-item {
-      padding: 12px;
-      background: #fafafa;
-      border-radius: 6px;
-      border: 1px solid #eee;
-    }
-    .setting-item label {
-      display: block;
-      margin-bottom: 6px;
-      font-weight: bold;
-      font-size: 14px;
-    }
-    .setting-item input, .setting-item select {
-      width: 100%;
-      padding: 6px;
-      border: 1px solid #ccc;
-      border-radius: 4px;
-    }
-
-    .stat-value {
-      font-size: 20px;
-      font-weight: bold;
-      color: #1890ff;
-      margin-top: 6px;
-    }
-
-    /* 统计面板专用 */
-    .stats-controls {
-      grid-template-columns: 1fr 1fr auto;
-      align-items: end;
-    }
-    .stats-controls > div {
-      display: flex;
-      flex-direction: column;
-    }
-    .stats-controls label {
-      font-size: 14px;
-      margin-bottom: 4px;
-    }
-    .stats-controls input[type="date"] {
-      padding: 6px;
-      border: 1px solid #ccc;
-      border-radius: 4px;
-    }
-    .stats-controls button {
-      height: 34px;
-      margin-top: 22px;
-    }
-
-    #chartContainer {
-      margin-top: 20px;
-      position: relative;
-      height: 300px;
-    }
-
-    /* 多选模式指示器 */
-    .selection-mode-indicator {
-      background: #1890ff;
-      color: white;
-      padding: 6px 12px;
-      border-radius: 4px;
-      font-size: 14px;
-      display: inline-block;
-    }
-
-    /* 同步状态指示器 */
-    .sync-status {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 4px 10px;
-      background: #f0f9ff;
-      border-radius: 4px;
-      font-size: 14px;
-      margin-left: 10px;
-    }
-    .sync-status.synced { color: #52c41a; }
-    .sync-status.syncing { color: #1890ff; animation: pulse 1s infinite; }
-    .sync-status.error { color: #ff4d4f; }
-    @keyframes pulse { 50% { opacity: 0.5; } }
+    .panel { display: none; }
+    .panel.active { display: block; }
+    .settings-grid, .stats-controls, .stats-grid { display: grid; gap: 15px; margin-top: 15px; }
+    .settings-grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+    .setting-item, .stat-item { padding: 12px; background: #fafafa; border-radius: 6px; border: 1px solid #eee; }
+    .setting-item label { display: block; margin-bottom: 6px; font-weight: bold; font-size: 14px; }
+    .setting-item input, .setting-item select { width: 100%; padding: 6px; border: 1px solid #ccc; border-radius: 4px; }
+    .stat-value { font-size: 20px; font-weight: bold; color: #1890ff; margin-top: 6px; }
+    .stats-controls { grid-template-columns: 1fr 1fr auto; align-items: end; }
+    .stats-controls > div { display: flex; flex-direction: column; }
+    .stats-controls label { font-size: 14px; margin-bottom: 4px; }
+    .stats-controls input[type="date"] { padding: 6px; border: 1px solid #ccc; border-radius: 4px; }
+    .stats-controls button { height: 34px; margin-top: 22px; }
+    #chartContainer { margin-top: 20px; position: relative; height: 300px; }
+    .selection-mode-indicator { background: #1890ff; color: white; padding: 6px 12px; border-radius: 4px; font-size: 14px; display: inline-block; }
+    /* 优化同步状态显示 */
+    .sync-status { display: inline-flex; align-items: center; gap: 8px; padding: 4px 10px; border-radius: 4px; font-size: 14px; margin-left: 10px; transition: all 0.3s ease; }
+    .sync-status.synced { background: #f6ffed; color: #52c41a; }
+    .sync-status.syncing { background: #e6f7ff; color: #1890ff; animation: pulse 1.5s infinite; }
+    .sync-status.error { background: #fff2f0; color: #ff4d4f; }
+    .sync-status.warning { background: #fff7e6; color: #d46b08; }
+    @keyframes pulse { 0%, 100% { opacity: 0.8; } 50% { opacity: 1; } }
   </style>
 </head>
 <body>
   <div class="container">
     <h1>
-      夜班工时合规检查器（云端同步版）
+      夜班工时合规检查器（稳定同步版）
       <span id="syncStatus" class="sync-status synced">✓ 已同步</span>
     </h1>
 
-    <!-- 导航标签 -->
     <div class="nav-tabs">
       <button id="tab-calendar" class="active" onclick="switchTab('calendar')">日历</button>
       <button id="tab-stats" onclick="switchTab('stats')">📊 统计分析</button>
@@ -331,31 +130,16 @@
       </div>
     </div>
 
-    <!-- 统计分析面板 -->
+    <!-- 统计面板 -->
     <div id="panel-stats" class="panel">
       <h2>📊 高级统计分析</h2>
-
       <div class="stats-controls">
-        <div>
-          <label>开始日期</label>
-          <input type="date" id="statStartDate" />
-        </div>
-        <div>
-          <label>结束日期</label>
-          <input type="date" id="statEndDate" />
-        </div>
-        <div>
-          <button class="btn-settings" onclick="renderStatsWithRange()">🔍 分析</button>
-        </div>
+        <div><label>开始日期</label><input type="date" id="statStartDate" /></div>
+        <div><label>结束日期</label><input type="date" id="statEndDate" /></div>
+        <div><button class="btn-settings" onclick="renderStatsWithRange()">🔍 分析</button></div>
       </div>
-
-      <div class="stats-grid" id="statsGrid">
-        <!-- 动态生成 -->
-      </div>
-
-      <div id="chartContainer">
-        <canvas id="monthlyChart"></canvas>
-      </div>
+      <div class="stats-grid" id="statsGrid"></div>
+      <div id="chartContainer"><canvas id="monthlyChart"></canvas></div>
     </div>
 
     <!-- 设置面板 -->
@@ -363,35 +147,12 @@
       <h2>⚙️ 系统设置</h2>
       <p>修改后自动保存，所有设备同步生效。</p>
       <div class="settings-grid">
-        <div class="setting-item">
-          <label>大夜班主时段（小时）</label>
-          <input type="number" step="0.1" id="settingBigMain" />
-        </div>
-        <div class="setting-item">
-          <label>大夜班次日时段（小时）</label>
-          <input type="number" step="0.1" id="settingBigNext" />
-        </div>
-        <div class="setting-item">
-          <label>小夜班工时（小时）</label>
-          <input type="number" step="0.1" id="settingSmall" />
-        </div>
-        <div class="setting-item">
-          <label>合规阈值（7天最大工时）</label>
-          <input type="number" step="0.1" id="settingLimit" />
-        </div>
-        <div class="setting-item">
-          <label>默认视图</label>
-          <select id="settingDefaultView">
-            <option value="week">标准周历</option>
-            <option value="cycle">6天循环历</option>
-          </select>
-        </div>
-        <!-- 用户ID设置 -->
-        <div class="setting-item">
-          <label>同步用户ID（多设备请保持一致）</label>
-          <input type="text" id="settingUserId" placeholder="输入字母数字组合" />
-          <small style="color:#666;">用于区分不同用户数据</small>
-        </div>
+        <div class="setting-item"><label>大夜班主时段（小时）</label><input type="number" step="0.1" id="settingBigMain" /></div>
+        <div class="setting-item"><label>大夜班次日时段（小时）</label><input type="number" step="0.1" id="settingBigNext" /></div>
+        <div class="setting-item"><label>小夜班工时（小时）</label><input type="number" step="0.1" id="settingSmall" /></div>
+        <div class="setting-item"><label>合规阈值（7天最大工时）</label><input type="number" step="0.1" id="settingLimit" /></div>
+        <div class="setting-item"><label>默认视图</label><select id="settingDefaultView"><option value="week">标准周历</option><option value="cycle">6天循环历</option></select></div>
+        <div class="setting-item"><label>同步用户ID（多设备请保持一致）</label><input type="text" id="settingUserId" placeholder="输入字母数字组合" /><small style="color:#666;">用于区分不同用户数据</small></div>
       </div>
       <div style="text-align:center; margin-top:20px;">
         <button class="btn-settings" onclick="saveSettings()">💾 保存设置</button>
@@ -400,50 +161,60 @@
     </div>
   </div>
 
-  <!-- 额外弹窗 & 右键菜单 -->
-  <div id="extraModal" class="modal">
-    <div class="modal-content">
-      <h3>额外调整工时</h3>
-      <p>对所选日期，在原有基础上增加或减少工时</p>
-      <div class="unit-selector">
-        <label><input type="radio" name="unit" value="hour" checked /> 小时（如 1.5）</label>
-        <label><input type="radio" name="unit" value="minute" /> 分钟（如 -30）</label>
-      </div>
-      <input type="number" id="extraInput" placeholder="输入数值（可为负数）" step="any" />
-      <div class="modal-buttons">
-        <button onclick="applyExtra()">确定</button>
-        <button onclick="closeExtraModal()">取消</button>
-      </div>
-    </div>
-  </div>
-
-  <div id="contextMenu" style="
-    position: absolute;
-    background: white;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    box-shadow: 2px 2px 6px rgba(0,0,0,0.2);
-    z-index: 2000;
-    display: none;
-      min-width: 120px;
-  ">
-    <div onclick="deleteSingleShift()" style="padding:8px 12px;cursor:pointer;">删除班次</div>
-  </div>
+  <!-- 弹窗 -->
+  <div id="extraModal" class="modal"><div class="modal-content"><h3>额外调整工时</h3><p>对所选日期，在原有基础上增加或减少工时</p><div class="unit-selector"><label><input type="radio" name="unit" value="hour" checked /> 小时（如 1.5）</label><label><input type="radio" name="unit" value="minute" /> 分钟（如 -30）</label></div><input type="number" id="extraInput" placeholder="输入数值（可为负数）" step="any" /><div class="modal-buttons"><button onclick="applyExtra()">确定</button><button onclick="closeExtraModal()">取消</button></div></div></div>
+  <div id="contextMenu" style="position:absolute;background:white;border:1px solid #ccc;border-radius:4px;box-shadow:2px 2px 6px rgba(0,0,0,0.2);z-index:2000;display:none;min-width:120px;"><div onclick="deleteSingleShift()" style="padding:8px 12px;cursor:pointer;">删除班次</div></div>
 
   <script>
-    // ============ Supabase 配置（已填写您的信息）===========
+    // ============ Supabase 配置 ============
     const SUPABASE_URL = 'https://morkovixfwdsaknmwavj.supabase.co';
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1vcmtvdml4Zndkc2Frbm13YXZqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM3MzM1NDIsImV4cCI6MjA3OTMwOTU0Mn0.wh-UEaQyr3bpJBQkCrzJpRR5v4NvRpx3LsnsAo-DGqE';
 
-    // 初始化 Supabase 客户端
-    let supabase;
-    try {
-      supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-      console.log('✅ Supabase 初始化成功');
-    } catch (e) {
-      console.error('❌ Supabase 初始化失败:', e);
-      alert('⚠️ 云端同步配置异常，请检查网络连接');
+    // ============ 核心改进：同步管理器 ============
+    class SyncManager {
+      constructor() {
+        this.isSyncing = false;
+        this.lastSyncTime = 0;
+        this.minSyncInterval = 5000; // 5秒最小同步间隔
+        this.pendingSync = false;
+      }
+
+      async sync(saveToStorageFn, options = { sync: true }) {
+        // 如果正在同步，标记待办
+        if (this.isSyncing) {
+          this.pendingSync = true;
+          return;
+        }
+
+        // 检查时间间隔
+        const now = Date.now();
+        if (now - this.lastSyncTime < this.minSyncInterval) {
+          if (!this.pendingSync) {
+            this.pendingSync = true;
+            setTimeout(() => {
+              this.pendingSync = false;
+              this.sync(saveToStorageFn, options);
+            }, this.minSyncInterval - (now - this.lastSyncTime));
+          }
+          return;
+        }
+
+        this.isSyncing = true;
+        this.lastSyncTime = now;
+
+        try {
+          await saveToStorageFn(options);
+        } finally {
+          this.isSyncing = false;
+          if (this.pendingSync) {
+            this.pendingSync = false;
+            setTimeout(() => this.sync(saveToStorageFn, options), 100);
+          }
+        }
+      }
     }
+
+    const syncManager = new SyncManager();
 
     // ============ 数据存储 ============
     function getUserId() {
@@ -451,9 +222,15 @@
       if (!userId) {
         userId = 'user_' + Math.random().toString(36).substr(2, 9);
         localStorage.setItem('userId', userId);
-        alert(`🆔 已生成本机用户ID: ${userId}\n\n多设备同步：在其他设备设置中填入相同ID`);
       }
       return userId;
+    }
+
+    let supabase;
+    try {
+      supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    } catch (e) {
+      console.error('Supabase 初始化失败:', e);
     }
 
     let shifts = {};
@@ -466,13 +243,13 @@
     let chartInstance = null;
     let isMultiSelectMode = false;
 
-    // 显示用户ID
     document.getElementById('userIdDisplay').textContent = getUserId().substring(0, 8);
 
+    // 核心保存函数
     async function saveToStorage(options = { sync: true }) {
       const userId = getUserId();
       
-      // 保存到本地（缓存）
+      // 保存到本地
       localStorage.setItem('shifts_local', JSON.stringify(shifts));
       localStorage.setItem('selectedMonth_local', selectedMonth);
       localStorage.setItem('shifts_settings_local', JSON.stringify(settings));
@@ -485,12 +262,14 @@
         try {
           // 批量保存班次
           const shiftPromises = Object.entries(shifts).map(async ([date, data]) => {
-            const { data: existing } = await supabase
+            const { data: existing, error: checkError } = await supabase
               .from('shifts')
               .select('id')
               .eq('user_id', userId)
               .eq('date', date)
               .single();
+
+            if (checkError && checkError.code !== 'PGRST116') throw checkError;
 
             if (existing) {
               return supabase
@@ -515,20 +294,22 @@
             });
 
           await Promise.all([...shiftPromises, settingsPromise]);
-          
           updateSyncStatus('synced', '✓ 已同步');
-          console.log('☁️ 云端同步成功');
         } catch (error) {
-          console.error('❌ 云端同步失败:', error);
+          console.error('云端同步失败:', error);
           updateSyncStatus('error', '✗ 同步失败');
         }
       }
     }
 
+    // 包装函数：通过同步管理器调用
+    function saveToStorageSafe(options = { sync: true }) {
+      return syncManager.sync(saveToStorage, options);
+    }
+
     // 从云端加载
     async function loadFromCloud() {
       if (!supabase) {
-        console.warn('⚠️ Supabase 未配置，使用本地数据');
         loadFromLocal();
         return;
       }
@@ -537,7 +318,6 @@
       updateSyncStatus('syncing', '⏳ 加载云端数据...');
 
       try {
-        // 加载班次
         const { data: shiftsData, error: shiftsError } = await supabase
           .from('shifts')
           .select('date, data')
@@ -545,7 +325,6 @@
 
         if (shiftsError) throw shiftsError;
 
-        // 加载设置
         const { data: settingsData, error: settingsError } = await supabase
           .from('settings')
           .select('data')
@@ -554,7 +333,6 @@
 
         if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
 
-        // 合并数据
         if (shiftsData) {
           shifts = {};
           shiftsData.forEach(row => {
@@ -569,9 +347,8 @@
         }
 
         updateSyncStatus('synced', '✓ 已同步');
-        console.log('☁️ 云端数据加载成功');
       } catch (error) {
-        console.error('❌ 云端加载失败:', error);
+        console.error('云端加载失败:', error);
         updateSyncStatus('error', '✗ 加载失败');
         loadFromLocal();
       }
@@ -587,13 +364,6 @@
       const statusEl = document.getElementById('syncStatus');
       statusEl.className = 'sync-status ' + type;
       statusEl.textContent = message;
-      
-      if (type !== 'synced') {
-        setTimeout(() => {
-          statusEl.className = 'sync-status synced';
-          statusEl.textContent = '✓ 已同步';
-        }, 3000);
-      }
     }
 
     async function forceSync() {
@@ -632,7 +402,7 @@
     function switchView(view) {
       currentView = view;
       settings.defaultView = view;
-      saveToStorage({ sync: true });
+      saveToStorageSafe({ sync: true });
 
       document.querySelectorAll('.view-toggle button').forEach(btn => btn.classList.remove('active'));
       if (view === 'week') {
@@ -653,7 +423,7 @@
       document.getElementById('settingUserId').value = getUserId();
     }
 
-    function saveSettings() {
+    async function saveSettings() {
       const s = settings;
       s.bigMain = parseFloat(document.getElementById('settingBigMain').value) || defaultSettings.bigMain;
       s.bigNext = parseFloat(document.getElementById('settingBigNext').value) || defaultSettings.bigNext;
@@ -667,7 +437,7 @@
         alert('🆔 用户ID已更新！请在其他设备填入相同ID以实现同步');
       }
 
-      saveToStorage({ sync: true });
+      await saveToStorageSafe({ sync: true });
       alert('✅ 设置已保存并同步到云端！');
       
       if (currentView !== s.defaultView) {
@@ -678,7 +448,7 @@
     function resetSettings() {
       if (confirm('确定恢复默认设置？')) {
         settings = { ...defaultSettings };
-        saveToStorage({ sync: true });
+        saveToStorageSafe({ sync: true });
         loadSettingsUI();
         alert('已恢复默认设置');
       }
@@ -722,7 +492,7 @@
           if (data.settings) settings = data.settings;
           if (data.userId) localStorage.setItem('userId', data.userId);
           
-          await saveToStorage({ sync: true });
+          await saveToStorageSafe({ sync: true });
           
           document.getElementById('monthInput').value = selectedMonth;
           loadSettingsUI();
@@ -742,11 +512,10 @@
       const monthInput = document.getElementById('monthInput').value;
       if (!monthInput) return;
       selectedMonth = monthInput;
-      saveToStorage({ sync: true });
+      saveToStorageSafe({ sync: true });
 
       const year = parseInt(selectedMonth.split('-')[0]);
       const month = parseInt(selectedMonth.split('-')[1]) - 1;
-
       const firstDay = new Date(year, month, 1);
       const lastDay = new Date(year, month + 1, 0);
       const daysInMonth = lastDay.getDate();
@@ -806,13 +575,9 @@
         if (extraHours !== 0) {
           const sign = extraHours >= 0 ? '+' : '';
           extraSpan.textContent = `${sign}${Math.abs(extraHours).toFixed(2)}h`;
-        } else {
-          extraSpan.textContent = '';
         }
         if (extraHours !== 0) {
           totalSpan.textContent = `=${totalHours.toFixed(2)}h`;
-        } else {
-          totalSpan.textContent = '';
         }
 
         cell.appendChild(numberSpan);
@@ -824,15 +589,12 @@
           }
         }
 
-        // 长按多选
         cell.addEventListener('mousedown', (e) => {
-          if (e.button === 0) {
-            if (e.ctrlKey || e.metaKey) {
-              e.preventDefault();
-              toggleMultiSelect(dateStr, cell);
-              isMultiSelectMode = true;
-              updateMultiSelectUI();
-            }
+          if (e.button === 0 && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault();
+            toggleMultiSelect(dateStr, cell);
+            isMultiSelectMode = true;
+            updateMultiSelectUI();
           }
         });
 
@@ -846,14 +608,14 @@
           }, 500);
         });
 
-        cell.addEventListener('touchend', (e) => {
+        cell.addEventListener('touchend', () => {
           if (longPressTimer) {
             clearTimeout(longPressTimer);
             longPressTimer = null;
           }
         });
 
-        cell.addEventListener('click', (e) => {
+        cell.addEventListener('click', () => {
           if (isMultiSelectMode) {
             toggleMultiSelect(dateStr, cell);
           } else {
@@ -946,7 +708,7 @@
         if (shifts[dateStr].extraMeta) delete shifts[dateStr].extraMeta;
       });
 
-      await saveToStorage({ sync: true });
+      await saveToStorageSafe({ sync: true });
       clearMultiSelectUI();
       multiSelectedDates.clear();
       isMultiSelectMode = false;
@@ -974,7 +736,7 @@
         }
       });
 
-      await saveToStorage({ sync: true });
+      await saveToStorageSafe({ sync: true });
       clearMultiSelectUI();
       multiSelectedDates.clear();
       isMultiSelectMode = false;
@@ -996,7 +758,7 @@
         }
       }
 
-      await saveToStorage({ sync: true });
+      await saveToStorageSafe({ sync: true });
       document.getElementById('contextMenu').style.display = 'none';
       renderCalendar();
     }
@@ -1062,7 +824,7 @@
         }
       });
 
-      await saveToStorage({ sync: true });
+      await saveToStorageSafe({ sync: true });
       closeExtraModal();
       clearMultiSelectUI();
       multiSelectedDates.clear();
@@ -1112,32 +874,22 @@
       const [yearStr, monthStr] = selectedMonth.split('-');
       const year = parseInt(yearStr);
       const month = parseInt(monthStr) - 1;
-
       const firstOfMonth = new Date(year, month, 1);
       const lastOfMonth = new Date(year, month + 1, 0);
-
       const startDate = new Date(firstOfMonth);
       startDate.setDate(startDate.getDate() - 6);
-
       const windows = [];
       let current = new Date(startDate);
 
       while (true) {
         const windowEnd = new Date(current);
         windowEnd.setDate(current.getDate() + 6);
-
         if (current > lastOfMonth) break;
-
         if (windowEnd >= firstOfMonth && current <= lastOfMonth) {
-          windows.push({
-            start: new Date(current),
-            end: new Date(windowEnd)
-          });
+          windows.push({ start: new Date(current), end: new Date(windowEnd) });
         }
-
         current.setDate(current.getDate() + 1);
       }
-
       return windows;
     }
 
@@ -1184,7 +936,6 @@
     function updateShiftInfo() {
       const total = calculateMonthlyTotalHours(selectedMonth);
       const hasOverLimit = weekSummaries.some(w => w.violation);
-
       const infoEl = document.getElementById('shiftInfo');
       infoEl.innerHTML = `
         <p>本月总工时：${total.toFixed(2)} 小时</p>
@@ -1216,7 +967,7 @@
       return `${d.getMonth() + 1}/${d.getDate()}`;
     }
 
-    // ========== 高级统计分析 ==========
+    // ========== 统计分析 ==========
     function initDateRangeForStats() {
       const today = new Date();
       const oneYearAgo = new Date();
@@ -1388,23 +1139,35 @@
       loadSettingsUI();
       renderCalendar();
       
-      // 启用实时订阅
+      // 优化实时订阅：避免循环更新
       if (supabase) {
         const userId = getUserId();
         
+        let lastSyncTimestamp = 0;
         supabase
           .channel('shifts-channel')
           .on('postgres_changes', { event: '*', schema: 'public', table: 'shifts', filter: `user_id=eq.${userId}` }, async (payload) => {
-            console.log('☁️ 收到云端数据更新');
+            // 防止循环触发：检查时间戳
+            const now = Date.now();
+            if (now - lastSyncTimestamp < 2000) return; // 2秒内不重复同步
+            lastSyncTimestamp = now;
+            
+            console.log('收到云端班次更新', payload.eventType);
             await loadFromCloud();
             renderCalendar();
           })
           .on('postgres_changes', { event: '*', schema: 'public', table: 'settings', filter: `user_id=eq.${userId}` }, async (payload) => {
-            console.log('☁️ 收到设置更新');
+            const now = Date.now();
+            if (now - lastSyncTimestamp < 2000) return;
+            lastSyncTimestamp = now;
+            
+            console.log('收到云端设置更新', payload.eventType);
             await loadFromCloud();
             loadSettingsUI();
           })
-          .subscribe();
+          .subscribe((status) => {
+            console.log('实时订阅状态:', status);
+          });
       }
     };
 
@@ -1412,11 +1175,10 @@
       if (e.target.id === 'extraModal') closeExtraModal();
     };
 
-    // 页面激活时自动同步
+    // 页面激活时同步（带延迟）
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden && supabase) {
-        console.log('页面激活，自动同步...');
-        forceSync();
+        setTimeout(() => forceSync(), 500); // 延迟500ms避免频繁触发
       }
     });
   </script>
