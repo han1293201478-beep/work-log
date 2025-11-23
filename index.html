@@ -372,84 +372,102 @@ let rightClickedDate = '';
     let currentStatsSummary = {};
 document.getElementById('userIdDisplay').textContent = getUserId().substring(0, 8);
     
-    // 核心保存函数 (已修改为：范围删除 + 批量插入策略，并优化错误处理)
+    // 核心保存函数 (已增强重试机制)
     async function saveToStorage(options = { sync: true }) {
       const userId = getUserId();
+      // Always save to local storage first, this is the source of truth.
       localStorage.setItem('shifts_local', JSON.stringify(shifts));
       localStorage.setItem('selectedMonth_local', selectedMonth);
       localStorage.setItem('shifts_settings_local', JSON.stringify(settings));
       localStorage.setItem('userId', userId);
       
       if (supabase && options.sync) {
-        updateSyncStatus('syncing', '⏳ 同步中...');
-        try {
-          // --- 核心修复：采用“范围删除 + 批量插入”的同步策略 ---
-          
-          // 1. 确定当前月份的范围
-          const [year, month] = selectedMonth.split('-').map(Number);
-          const startOfMonth = `${selectedMonth}-01`;
-          const endOfMonth = new Date(year, month, 0).toISOString().split('T')[0]; 
+        const maxRetries = 5;
+        let attempt = 0;
+        let success = false;
+        let lastError = null;
 
-          // 2. 筛选出当前月份需要上传的 shifts
-          const shiftsToInsert = Object.entries(shifts)
-              .filter(([date, data]) => 
-                  date >= startOfMonth && 
-                  date <= endOfMonth && 
-                  data?.type !== 'none' && 
-                  data?.hours !== undefined
-              )
-              .map(([date, data]) => ({
-                  user_id: userId, 
-                  date: date, 
-                  data: data, 
-                  updated_at: new Date().toISOString() 
-              }));
+        do {
+            updateSyncStatus('syncing', `⏳ 同步中 (尝试 ${attempt + 1}/${maxRetries})...`);
+            
+            try {
+                // 1. 确定当前月份的范围
+                const [year, month] = selectedMonth.split('-').map(Number);
+                const startOfMonth = `${selectedMonth}-01`;
+                const endOfMonth = new Date(year, month, 0).toISOString().split('T')[0]; 
 
-          // 3. Upsert Settings (确保单行记录)
-          const settingsPromise = supabase.from('settings').upsert({ 
-              user_id: userId, 
-              data: settings, 
-              updated_at: new Date().toISOString() 
-          }).select(); 
+                // 2. 筛选出当前月份需要上传的 shifts
+                const shiftsToInsert = Object.entries(shifts)
+                    .filter(([date, data]) => 
+                        date >= startOfMonth && 
+                        date <= endOfMonth && 
+                        data?.type !== 'none' && 
+                        data?.hours !== undefined
+                    )
+                    .map(([date, data]) => ({
+                        user_id: userId, 
+                        date: date, 
+                        data: data, 
+                        updated_at: new Date().toISOString() 
+                    }));
 
-          // 4. **强制删除** 该月份当前用户的所有记录 (Delete by Range)
-          const deletePromise = supabase.from('shifts')
-              .delete()
-              .eq('user_id', userId)
-              .gte('date', startOfMonth) 
-              .lte('date', endOfMonth);
+                // 3. Upsert Settings
+                const settingsPromise = supabase.from('settings').upsert({ 
+                    user_id: userId, 
+                    data: settings, 
+                    updated_at: new Date().toISOString() 
+                }).select(); 
 
-          // 5. 批量插入新记录 (Insert)
-          let insertPromise;
-          if (shiftsToInsert.length > 0) {
-              // 关键：这里不能使用 upsert，因为 upsert 仍然可能因之前的脏数据触发冲突。
-              // 必须先进行删除，再尝试插入。
-              insertPromise = supabase.from('shifts').insert(shiftsToInsert).select(); 
-          } else {
-              insertPromise = Promise.resolve({ data: [], error: null });
-          }
+                // 4. **强制删除** 该月份当前用户的所有记录 (Delete by Range)
+                const deletePromise = supabase.from('shifts')
+                    .delete()
+                    .eq('user_id', userId)
+                    .gte('date', startOfMonth) 
+                    .lte('date', endOfMonth);
 
-          // 6. 统一等待并检查所有操作
-          const [deleteResponse, insertResponse, settingsResponse] = await Promise.all([deletePromise, insertPromise, settingsPromise]);
+                // 5. 批量插入新记录 (Insert)
+                let insertPromise;
+                if (shiftsToInsert.length > 0) {
+                    insertPromise = supabase.from('shifts').insert(shiftsToInsert).select(); 
+                } else {
+                    // 如果没有班次要插入，仍然等待删除操作完成
+                    insertPromise = Promise.resolve({ data: [], error: null });
+                }
 
-          if (deleteResponse.error) {
-              // 删除操作失败可能导致后续插入失败，但我们尝试继续
-              console.warn('云端删除操作遇到警告（但尝试继续）:', deleteResponse.error);
-          }
+                // 6. 统一等待并检查所有操作
+                const [deleteResponse, insertResponse, settingsResponse] = await Promise.all([deletePromise, insertPromise, settingsPromise]);
 
-          if (insertResponse.error) {
-              throw insertResponse.error; // 插入失败必须报错
-          }
-          if (settingsResponse.error) {
-              throw settingsResponse.error;
-          }
+                if (deleteResponse.error) {
+                    console.warn(`云端删除操作遇到警告（尝试 ${attempt + 1}）:`, deleteResponse.error);
+                }
 
-          updateSyncStatus('synced', '✓ 已同步');
-        } catch (error) {
-          console.error('云端同步失败:', error);
-          // 始终显示详细错误信息
-          const errorMessage = error.message || String(error);
-          updateSyncStatus('error', '✗ 同步失败: ' + errorMessage.substring(0, 50) + '...');
+                if (insertResponse.error) {
+                    throw insertResponse.error; // 插入失败必须报错
+                }
+                if (settingsResponse.error) {
+                    throw settingsResponse.error;
+                }
+
+                success = true; // 成功完成所有操作
+                
+            } catch (error) {
+                lastError = error;
+                console.error(`云端同步失败 (尝试 ${attempt + 1}/${maxRetries}):`, error);
+                attempt++;
+                if (attempt < maxRetries) {
+                    // 简单指数退避
+                    const delay = 200 * attempt;
+                    await new Promise(resolve => setTimeout(resolve, delay)); 
+                }
+            }
+        } while (!success && attempt < maxRetries);
+
+        if (success) {
+            updateSyncStatus('synced', '✓ 已同步');
+        } else {
+            // 所有重试失败，显示最终错误
+            const errorMessage = lastError.message || String(lastError);
+            updateSyncStatus('error', '✗ 同步失败: ' + errorMessage.substring(0, 50) + '...');
         }
       }
     }
