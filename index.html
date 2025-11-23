@@ -369,87 +369,60 @@ let rightClickedDate = '';
     let currentStatsSummary = {};
 document.getElementById('userIdDisplay').textContent = getUserId().substring(0, 8);
     
-    // 核心保存函数 (已修改为：范围删除 + 批量插入策略，并优化错误处理)
-    async function saveToStorage(options = { sync: true }) {
-      const userId = getUserId();
-      localStorage.setItem('shifts_local', JSON.stringify(shifts));
-      localStorage.setItem('selectedMonth_local', selectedMonth);
-      localStorage.setItem('shifts_settings_local', JSON.stringify(settings));
-      localStorage.setItem('userId', userId);
-      
-      if (supabase && options.sync) {
-        updateSyncStatus('syncing', '⏳ 同步中...');
-        try {
-          // --- 核心修复：采用“范围删除 + 批量插入”的同步策略 ---
-          
-          // 1. 确定当前月份的范围
-          const [year, month] = selectedMonth.split('-').map(Number);
-          const startOfMonth = `${selectedMonth}-01`;
-          const endOfMonth = new Date(year, month, 0).toISOString().split('T')[0]; 
+   async function saveToStorage(options = { sync: true }) {
+  const userId = getUserId();
+  // 本地保存
+  localStorage.setItem('shifts_local', JSON.stringify(shifts));
+  localStorage.setItem('selectedMonth_local', selectedMonth);
+  localStorage.setItem('shifts_settings_local', JSON.stringify(settings));
+  localStorage.setItem('userId', userId);
 
-          // 2. 筛选出当前月份需要上传的 shifts
-          const shiftsToInsert = Object.entries(shifts)
-              .filter(([date, data]) => 
-                  date >= startOfMonth && 
-                  date <= endOfMonth && 
-                  data?.type !== 'none' && 
-                  data?.hours !== undefined
-              )
-              .map(([date, data]) => ({
-                  user_id: userId, 
-                  date: date, 
-                  data: data, 
-                  updated_at: new Date().toISOString() 
-              }));
+  if (supabase && options.sync) {
+    updateSyncStatus('syncing', '⏳ 同步中...');
+    try {
+      const [year, month] = selectedMonth.split('-').map(Number);
+      const startOfMonth = `${selectedMonth}-01`;
+      const endOfMonth = new Date(year, month, 0).toISOString().split('T')[0];
 
-          // 3. Upsert Settings (确保单行记录)
-          const settingsPromise = supabase.from('settings').upsert({ 
-              user_id: userId, 
-              data: settings, 
-              updated_at: new Date().toISOString() 
-          }).select(); 
+      // 构建要同步的数据（包括“删除”：通过不上传来实现）
+      const shiftsToSync = Object.entries(shifts)
+        .filter(([date, data]) => 
+          date >= startOfMonth && 
+          date <= endOfMonth && 
+          data?.type !== 'none' && 
+          data?.hours !== undefined
+        )
+        .map(([date, data]) => ({
+          user_id: userId,
+          date: date,
+          data: data,
+          updated_at: new Date().toISOString()
+        }));
 
-          // 4. **强制删除** 该月份当前用户的所有记录 (Delete by Range)
-          const deletePromise = supabase.from('shifts')
-              .delete()
-              .eq('user_id', userId)
-              .gte('date', startOfMonth) 
-              .lte('date', endOfMonth);
+      // 【关键】使用 upsert，自动覆盖或插入
+      const { error: shiftError } = await supabase
+        .from('shifts')
+        .upsert(shiftsToSync, { onConflict: 'user_id,date' });
 
-          // 5. 批量插入新记录 (Insert)
-          let insertPromise;
-          if (shiftsToInsert.length > 0) {
-              // 关键：这里不能使用 upsert，因为 upsert 仍然可能因之前的脏数据触发冲突。
-              // 必须先进行删除，再尝试插入。
-              insertPromise = supabase.from('shifts').insert(shiftsToInsert).select(); 
-          } else {
-              insertPromise = Promise.resolve({ data: [], error: null });
-          }
+      const { error: settingsError } = await supabase
+        .from('settings')
+        .upsert({
+          user_id: userId,
+          data: settings,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'user_id' });
 
-          // 6. 统一等待并检查所有操作
-          const [deleteResponse, insertResponse, settingsResponse] = await Promise.all([deletePromise, insertPromise, settingsPromise]);
-
-          if (deleteResponse.error) {
-              // 删除操作失败可能导致后续插入失败，但我们尝试继续
-              console.warn('云端删除操作遇到警告（但尝试继续）:', deleteResponse.error);
-          }
-
-          if (insertResponse.error) {
-              throw insertResponse.error; // 插入失败必须报错
-          }
-          if (settingsResponse.error) {
-              throw settingsResponse.error;
-          }
-
-          updateSyncStatus('synced', '✓ 已同步');
-        } catch (error) {
-          console.error('云端同步失败:', error);
-          // 始终显示详细错误信息
-          const errorMessage = error.message || String(error);
-          updateSyncStatus('error', '✗ 同步失败: ' + errorMessage.substring(0, 50) + '...');
-        }
+      if (shiftError || settingsError) {
+        throw new Error(shiftError?.message || settingsError?.message);
       }
+
+      updateSyncStatus('synced', '✓ 已同步');
+    } catch (error) {
+      console.error('同步失败:', error);
+      updateSyncStatus('error', '✗ 同步失败: ' + (error.message || '').substring(0, 50) + '...');
     }
+  }
+}
 
     function saveToStorageSafe(options = { sync: true }) {
       return syncManager.sync(saveToStorage, options);
