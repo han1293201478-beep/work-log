@@ -3,13 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>夜班工时合规检查器（稳定同步版）</title>
+  <title>夜班工时合规检查器（AI 对话增强版）</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
-    /* 样式保持不变... */
     body { font-family: "Microsoft YaHei", sans-serif; padding: 20px; background-color: #f9f9f9; }
-    .container { max-width: 950px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+    .container { max-width: 1000px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
     h1, h2, h3 { color: #333; }
     h1 { text-align: center; }
     .nav-tabs button { margin: 0 6px; padding: 6px 12px; border: 1px solid #ccc; background: #f5f5f5; cursor: pointer; border-radius: 4px; }
@@ -58,36 +57,102 @@
     .setting-item label { display: block; margin-bottom: 6px; font-weight: bold; font-size: 14px; }
     .setting-item input, .setting-item select { width: 100%; padding: 6px; border: 1px solid #ccc; border-radius: 4px; }
     .stat-value { font-size: 20px; font-weight: bold; color: #1890ff; margin-top: 6px; }
-    .stats-controls { grid-template-columns: 1fr 1fr auto; align-items: end; }
-    .stats-controls > div { display: flex; flex-direction: column; }
-    .stats-controls label { font-size: 14px; margin-bottom: 4px; }
-    .stats-controls input[type="date"] { padding: 6px; border: 1px solid #ccc; border-radius: 4px; }
-    .stats-controls button { height: 34px; margin-top: 22px; }
+    .stats-controls, .chat-controls { display: grid; gap: 15px; margin-top: 15px; grid-template-columns: 1fr 1fr auto; align-items: end; }
+    .stats-controls > div, .chat-controls > div { display: flex; flex-direction: column; }
+    .stats-controls label, .chat-controls label { font-size: 14px; margin-bottom: 4px; }
+    .stats-controls input[type="date"], .chat-controls input[type="date"] { padding: 6px; border: 1px solid #ccc; border-radius: 4px; }
+    .stats-controls button, .chat-controls button { height: 34px; margin-top: 22px; }
     #chartContainer { margin-top: 20px; position: relative; height: 300px; }
     .selection-mode-indicator { background: #1890ff; color: white; padding: 6px 12px; border-radius: 4px; font-size: 14px; display: inline-block; }
-    /* 优化同步状态显示 */
     .sync-status { display: inline-flex; align-items: center; gap: 8px; padding: 4px 10px; border-radius: 4px; font-size: 14px; margin-left: 10px; transition: all 0.3s ease; }
     .sync-status.synced { background: #f6ffed; color: #52c41a; }
     .sync-status.syncing { background: #e6f7ff; color: #1890ff; animation: pulse 1.5s infinite; }
     .sync-status.error { background: #fff2f0; color: #ff4d4f; }
     .sync-status.warning { background: #fff7e6; color: #d46b08; }
     @keyframes pulse { 0%, 100% { opacity: 0.8; } 50% { opacity: 1; } }
+    
+    /* 统一 AI Chat 样式 */
+    #chatContainer { display: flex; flex-direction: column; height: 600px; border: 1px solid #ddd; border-radius: 8px; overflow: hidden; margin-top: 15px; }
+    
+    .ai-chat-history {
+        flex-grow: 1;
+        overflow-y: auto;
+        padding: 15px;
+        background-color: #f7f7f7;
+        border: 1px solid #ddd;
+        border-radius: 8px 8px 0 0;
+        min-height: 200px; /* 最小高度 */
+        max-height: 400px; /* 最大高度 */
+        margin-top: 10px;
+        display: none; /* 默认隐藏，启动对话时显示 */
+    }
+    
+    #chatHistory { /* 主 Chat 面板的历史记录 */
+        flex-grow: 1; 
+        overflow-y: auto; 
+        padding: 15px; 
+        background-color: #f7f7f7;
+    }
+    
+    .chat-message { padding: 10px 15px; margin-bottom: 10px; border-radius: 18px; max-width: 90%; line-height: 1.6; }
+    .chat-user { align-self: flex-end; margin-left: auto; background-color: #1890ff; color: white; border-bottom-right-radius: 2px; }
+    .chat-ai { align-self: flex-start; margin-right: auto; background-color: #e6e6e6; color: #333; border-bottom-left-radius: 2px; }
+    .chat-ai pre { white-space: pre-wrap; background: #fff; padding: 10px; border-radius: 4px; border: 1px dashed #ccc; font-size: 12px; margin-top: 5px; overflow-x: auto; }
+    
+    .ai-chat-input-container {
+        padding: 10px 15px;
+        background-color: white;
+        border: 1px solid #ddd;
+        border-top: none;
+        border-radius: 0 0 8px 8px;
+        display: flex;
+        gap: 10px;
+    }
+    .ai-chat-input-container textarea {
+        flex-grow: 1;
+        padding: 8px;
+        border: 1px solid #ccc;
+        border-radius: 12px;
+        resize: none;
+        max-height: 80px;
+        line-height: 1.4;
+    }
+    .ai-chat-input-container button {
+        background-color: #52c41a;
+        color: white;
+        border: none;
+        padding: 8px 15px;
+        border-radius: 12px;
+        cursor: pointer;
+        font-weight: bold;
+    }
+    
+    #chatInputContainer { /* 主 Chat 面板的输入框 */
+        padding: 15px; background-color: white; border-top: 1px solid #ddd; display: flex; 
+    }
+    #chatInput { 
+        flex-grow: 1; padding: 10px; border: 1px solid #ccc; border-radius: 20px; margin-right: 10px; resize: none; 
+    }
+    #chatSendBtn { 
+        background-color: #52c41a; color: white; border: none; padding: 10px 20px; border-radius: 20px; cursor: pointer; font-weight: bold; 
+    }
+    #chatSendBtn:disabled { background-color: #ccc; cursor: not-allowed; }
   </style>
 </head>
 <body>
   <div class="container">
     <h1>
-      夜班工时合规检查器（稳定同步版）
+      夜班工时合规检查器（AI 对话增强版）
       <span id="syncStatus" class="sync-status synced">✓ 已同步</span>
     </h1>
 
     <div class="nav-tabs">
       <button id="tab-calendar" class="active" onclick="switchTab('calendar')">日历</button>
       <button id="tab-stats" onclick="switchTab('stats')">📊 统计分析</button>
+      <button id="tab-chat" onclick="switchTab('chat')">💬 AI 对话</button>
       <button id="tab-settings" onclick="switchTab('settings')">⚙️ 设置</button>
     </div>
 
-    <!-- 日历面板 -->
     <div id="panel-calendar" class="panel active">
       <div class="month-picker">
         <label>选择月份：</label>
@@ -118,11 +183,21 @@
         <button class="btn-delete" onclick="deleteSelected()">删除所选</button>
         <button class="btn-extra" onclick="openExtraModal()">额外调整</button>
         <button class="btn-clear" onclick="clearSelected()">取消多选</button>
+        <button class="btn-settings" onclick="runCalendarAiAnalysis()">🧠 分析并提供换班建议 (启动对话)</button> 
       </div>
 
       <div class="calendar" id="calendar"></div>
-
       <div class="shift-info" id="shiftInfo"></div>
+      
+      <div id="calendarAiChatContainer" style="margin-top: 15px;">
+        <h3 id="calendarAiTitle">🔄 排班合规性分析与讨论</h3>
+        <div id="complianceAdviceStatus" style="padding: 10px; border: 1px solid #ddd; border-radius: 4px;">点击上方 "分析并提供换班建议" 按钮启动对话。</div>
+        <div id="calendarChatHistory" class="ai-chat-history"></div>
+        <div id="calendarChatInputContainer" class="ai-chat-input-container" style="display:none;">
+            <textarea id="calendarChatInput" placeholder="基于以上分析继续提问（例如：将10号的班挪到12号是否合规？）" rows="1" onkeydown="handlePanelChatInput(event, 'calendar')"></textarea>
+            <button onclick="sendPanelChatMessage('calendar')">发送</button>
+        </div>
+      </div>
 
       <div class="week-summary">
         <h3>📅 连续7天工时统计（仅含当月日期的轮次）</h3>
@@ -130,19 +205,57 @@
       </div>
     </div>
 
-    <!-- 统计面板 -->
     <div id="panel-stats" class="panel">
       <h2>📊 高级统计分析</h2>
       <div class="stats-controls">
         <div><label>开始日期</label><input type="date" id="statStartDate" /></div>
-        <div><label>结束日期</label><input type="date" id="statEndDate" /></div>
+        <div><div><label>结束日期</label><input type="date" id="statEndDate" /></div></div>
         <div><button class="btn-settings" onclick="renderStatsWithRange()">🔍 分析</button></div>
       </div>
       <div class="stats-grid" id="statsGrid"></div>
       <div id="chartContainer"><canvas id="monthlyChart"></canvas></div>
+
+      <div style="margin-top: 25px; border-top: 1px solid #eee; padding-top: 15px;">
+          <div id="statsAiChatContainer">
+            <h3 id="statsAiTitle">📈 AI 智能总结与讨论</h3>
+            <button class="btn-settings" onclick="runAiAnalysis()">🧠 启动 AI 总结 (启动对话)</button>
+            <div id="aiSummaryResultStatus" style="padding: 10px; border: 1px solid #ddd; border-radius: 4px; margin-top: 10px;">请先选择日期范围并点击“分析”，然后点击上方按钮启动对话。</div>
+            <div id="statsChatHistory" class="ai-chat-history"></div>
+            <div id="statsChatInputContainer" class="ai-chat-input-container" style="display:none;">
+                <textarea id="statsChatInput" placeholder="基于以上总结继续提问（例如：我应该如何在休息日更好地恢复精力？）" rows="1" onkeydown="handlePanelChatInput(event, 'stats')"></textarea>
+                <button onclick="sendPanelChatMessage('stats')">发送</button>
+            </div>
+          </div>
+      </div>
     </div>
 
-    <!-- 设置面板 -->
+    <div id="panel-chat" class="panel">
+        <h2>💬 AI 私人健康助手</h2>
+        <p style="color: #666;">
+            您可以在此与 AI 私人健康助手进行对话，获取关于夜班下的健康、情绪和生活质量的建议。
+            <span id="chatConfigStatus" style="font-weight: bold;"></span>
+        </p>
+        
+        <div class="chat-controls">
+            <div><label>分析开始日期</label><input type="date" id="chatStartDate" /></div>
+            <div><div><label>分析结束日期</label><input type="date" id="chatEndDate" /></div></div>
+            <div>
+                <button class="btn-settings" onclick="AIAssistant.analyzeShiftData()">📈 获取并分析排班对健康的影响</button>
+            </div>
+        </div>
+        <div style="margin-top: 10px;">
+            <button class="btn-clear" onclick="resetChatHistory()">🔄 重置对话</button>
+        </div>
+
+        <div id="chatContainer">
+            <div id="chatHistory"></div>
+            <div id="chatInputContainer">
+                <textarea id="chatInput" placeholder="输入您的问题..." rows="1" onkeydown="handleChatInput(event)"></textarea>
+                <button id="chatSendBtn" onclick="sendChatMessage()">发送</button>
+            </div>
+        </div>
+    </div>
+
     <div id="panel-settings" class="panel">
       <h2>⚙️ 系统设置</h2>
       <p>修改后自动保存，所有设备同步生效。</p>
@@ -153,6 +266,10 @@
         <div class="setting-item"><label>合规阈值（7天最大工时）</label><input type="number" step="0.1" id="settingLimit" /></div>
         <div class="setting-item"><label>默认视图</label><select id="settingDefaultView"><option value="week">标准周历</option><option value="cycle">6天循环历</option></select></div>
         <div class="setting-item"><label>同步用户ID（多设备请保持一致）</label><input type="text" id="settingUserId" placeholder="输入字母数字组合" /><small style="color:#666;">用于区分不同用户数据</small></div>
+        
+        <div class="setting-item"><label>AI 服务终端点 (Endpoint URL)</label><input type="text" id="settingAiEndpoint" placeholder="如: https://api.openai.com/v1/chat/completions" /></div>
+        <div class="setting-item"><label>AI API 密钥 (Key)</label><input type="password" id="settingAiApiKey" placeholder="输入您的密钥" /><small style="color:#666;">密钥仅保存在本地/云端，请妥善保管。</small></div>
+        <div class="setting-item"><label>AI 模型名称</label><input type="text" id="settingAiModel" placeholder="如: gpt-3.5-turbo" /><small style="color:#666;">用于对话的模型名称</small></div>
       </div>
       <div style="text-align:center; margin-top:20px;">
         <button class="btn-settings" onclick="saveSettings()">💾 保存设置</button>
@@ -161,7 +278,6 @@
     </div>
   </div>
 
-  <!-- 弹窗 -->
   <div id="extraModal" class="modal"><div class="modal-content"><h3>额外调整工时</h3><p>对所选日期，在原有基础上增加或减少工时</p><div class="unit-selector"><label><input type="radio" name="unit" value="hour" checked /> 小时（如 1.5）</label><label><input type="radio" name="unit" value="minute" /> 分钟（如 -30）</label></div><input type="number" id="extraInput" placeholder="输入数值（可为负数）" step="any" /><div class="modal-buttons"><button onclick="applyExtra()">确定</button><button onclick="closeExtraModal()">取消</button></div></div></div>
   <div id="contextMenu" style="position:absolute;background:white;border:1px solid #ccc;border-radius:4px;box-shadow:2px 2px 6px rgba(0,0,0,0.2);z-index:2000;display:none;min-width:120px;"><div onclick="deleteSingleShift()" style="padding:8px 12px;cursor:pointer;">删除班次</div></div>
 
@@ -175,18 +291,14 @@
       constructor() {
         this.isSyncing = false;
         this.lastSyncTime = 0;
-        this.minSyncInterval = 5000; // 5秒最小同步间隔
+        this.minSyncInterval = 5000;
         this.pendingSync = false;
       }
-
       async sync(saveToStorageFn, options = { sync: true }) {
-        // 如果正在同步，标记待办
         if (this.isSyncing) {
           this.pendingSync = true;
           return;
         }
-
-        // 检查时间间隔
         const now = Date.now();
         if (now - this.lastSyncTime < this.minSyncInterval) {
           if (!this.pendingSync) {
@@ -194,14 +306,12 @@
             setTimeout(() => {
               this.pendingSync = false;
               this.sync(saveToStorageFn, options);
-            }, this.minSyncInterval - (now - this.lastSyncTime));
+            }, this.minSyncInterval - (now - self.lastSyncTime));
           }
           return;
         }
-
         this.isSyncing = true;
         this.lastSyncTime = now;
-
         try {
           await saveToStorageFn(options);
         } finally {
@@ -215,7 +325,6 @@
     }
 
     const syncManager = new SyncManager();
-
     // ============ 数据存储 ============
     function getUserId() {
       let userId = localStorage.getItem('userId');
@@ -242,57 +351,29 @@
     let weekSummaries = [];
     let chartInstance = null;
     let isMultiSelectMode = false;
+    let currentStatsSummary = {}; 
 
     document.getElementById('userIdDisplay').textContent = getUserId().substring(0, 8);
-
     // 核心保存函数
     async function saveToStorage(options = { sync: true }) {
       const userId = getUserId();
-      
-      // 保存到本地
       localStorage.setItem('shifts_local', JSON.stringify(shifts));
       localStorage.setItem('selectedMonth_local', selectedMonth);
       localStorage.setItem('shifts_settings_local', JSON.stringify(settings));
       localStorage.setItem('userId', userId);
-
-      // 同步到云端
       if (supabase && options.sync) {
         updateSyncStatus('syncing', '⏳ 同步中...');
-        
         try {
-          // 批量保存班次
           const shiftPromises = Object.entries(shifts).map(async ([date, data]) => {
-            const { data: existing, error: checkError } = await supabase
-              .from('shifts')
-              .select('id')
-              .eq('user_id', userId)
-              .eq('date', date)
-              .single();
-
+            const { data: existing, error: checkError } = await supabase.from('shifts').select('id').eq('user_id', userId).eq('date', date).single();
             if (checkError && checkError.code !== 'PGRST116') throw checkError;
-
             if (existing) {
-              return supabase
-                .from('shifts')
-                .update({ data, updated_at: new Date().toISOString() })
-                .eq('user_id', userId)
-                .eq('date', date);
+              return supabase.from('shifts').update({ data, updated_at: new Date().toISOString() }).eq('user_id', userId).eq('date', date);
             } else {
-              return supabase
-                .from('shifts')
-                .insert({ user_id: userId, date, data });
+              return supabase.from('shifts').insert({ user_id: userId, date, data });
             }
           });
-
-          // 保存设置
-          const settingsPromise = supabase
-            .from('settings')
-            .upsert({ 
-              user_id: userId, 
-              data: settings,
-              updated_at: new Date().toISOString()
-            });
-
+          const settingsPromise = supabase.from('settings').upsert({ user_id: userId, data: settings, updated_at: new Date().toISOString() });
           await Promise.all([...shiftPromises, settingsPromise]);
           updateSyncStatus('synced', '✓ 已同步');
         } catch (error) {
@@ -302,50 +383,28 @@
       }
     }
 
-    // 包装函数：通过同步管理器调用
     function saveToStorageSafe(options = { sync: true }) {
       return syncManager.sync(saveToStorage, options);
     }
 
-    // 从云端加载
     async function loadFromCloud() {
-      if (!supabase) {
-        loadFromLocal();
-        return;
-      }
-
+      if (!supabase) { loadFromLocal(); return; }
       const userId = getUserId();
       updateSyncStatus('syncing', '⏳ 加载云端数据...');
-
       try {
-        const { data: shiftsData, error: shiftsError } = await supabase
-          .from('shifts')
-          .select('date, data')
-          .eq('user_id', userId);
-
+        const { data: shiftsData, error: shiftsError } = await supabase.from('shifts').select('date, data').eq('user_id', userId);
         if (shiftsError) throw shiftsError;
-
-        const { data: settingsData, error: settingsError } = await supabase
-          .from('settings')
-          .select('data')
-          .eq('user_id', userId)
-          .single();
-
+        const { data: settingsData, error: settingsError } = await supabase.from('settings').select('data').eq('user_id', userId).single();
         if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
-
         if (shiftsData) {
           shifts = {};
-          shiftsData.forEach(row => {
-            shifts[row.date] = row.data;
-          });
+          shiftsData.forEach(row => { shifts[row.date] = row.data; });
           localStorage.setItem('shifts_local', JSON.stringify(shifts));
         }
-
         if (settingsData?.data) {
           settings = { ...defaultSettings, ...settingsData.data };
           localStorage.setItem('shifts_settings_local', JSON.stringify(settings));
         }
-
         updateSyncStatus('synced', '✓ 已同步');
       } catch (error) {
         console.error('云端加载失败:', error);
@@ -357,7 +416,7 @@
     function loadFromLocal() {
       shifts = JSON.parse(localStorage.getItem('shifts_local') || '{}');
       selectedMonth = localStorage.getItem('selectedMonth_local') || new Date().toISOString().slice(0, 7);
-      settings = JSON.parse(localStorage.getItem('shifts_settings_local') || JSON.stringify(defaultSettings));
+      settings = { ...defaultSettings, ...JSON.parse(localStorage.getItem('shifts_settings_local') || '{}') };
     }
 
     function updateSyncStatus(type, message) {
@@ -370,50 +429,38 @@
       await loadFromCloud();
       renderCalendar();
       if (document.getElementById('panel-stats').classList.contains('active')) {
-        renderStatsWithRange();
+        initDateRangeForStats(true); // 强制重新初始化和渲染统计
       }
     }
 
     const defaultSettings = {
-      bigMain: 7.4,
-      bigNext: 3,
-      small: 9.3,
-      limit: 40,
-      defaultView: 'week'
+      bigMain: 7.4, bigNext: 3, small: 9.3, limit: 40, defaultView: 'week',
+      aiEndpoint: 'https://api.openai.com/v1/chat/completions', aiApiKey: '', aiModel: 'gpt-3.5-turbo'
     };
 
-    // ========== 标签切换 ==========
     function switchTab(tab) {
-      ['calendar', 'stats', 'settings'].forEach(t => {
+      ['calendar', 'stats', 'chat', 'settings'].forEach(t => {
         document.getElementById(`panel-${t}`).classList.remove('active');
         document.getElementById(`tab-${t}`).classList.remove('active');
       });
       document.getElementById(`panel-${tab}`).classList.add('active');
       document.getElementById(`tab-${tab}`).classList.add('active');
-
-      if (tab === 'stats') {
-        initDateRangeForStats();
-        renderStatsWithRange();
-      } else if (tab === 'settings') {
-        loadSettingsUI();
-      }
+      if (tab === 'stats') { initDateRangeForStats(true); } 
+      else if (tab === 'chat') { initDateRangeForChat(); AIAssistant.initSystemMessage(); document.getElementById('chatInput').focus(); } 
+      else if (tab === 'settings') { loadSettingsUI(); }
+      AIAssistant.updateChatConfigStatus(); // Update status on tab switch
     }
 
     function switchView(view) {
       currentView = view;
       settings.defaultView = view;
       saveToStorageSafe({ sync: true });
-
       document.querySelectorAll('.view-toggle button').forEach(btn => btn.classList.remove('active'));
-      if (view === 'week') {
-        document.getElementById('btn-week').classList.add('active');
-      } else {
-        document.getElementById('btn-cycle').classList.add('active');
-      }
+      if (view === 'week') { document.getElementById('btn-week').classList.add('active'); } 
+      else { document.getElementById('btn-cycle').classList.add('active'); }
       renderCalendar();
     }
 
-    // ========== 设置管理 ==========
     function loadSettingsUI() {
       document.getElementById('settingBigMain').value = settings.bigMain;
       document.getElementById('settingBigNext').value = settings.bigNext;
@@ -421,6 +468,9 @@
       document.getElementById('settingLimit').value = settings.limit;
       document.getElementById('settingDefaultView').value = settings.defaultView;
       document.getElementById('settingUserId').value = getUserId();
+      document.getElementById('settingAiEndpoint').value = settings.aiEndpoint || '';
+      document.getElementById('settingAiApiKey').value = settings.aiApiKey || '';
+      document.getElementById('settingAiModel').value = settings.aiModel || '';
     }
 
     async function saveSettings() {
@@ -430,19 +480,21 @@
       s.small = parseFloat(document.getElementById('settingSmall').value) || defaultSettings.small;
       s.limit = parseFloat(document.getElementById('settingLimit').value) || defaultSettings.limit;
       s.defaultView = document.getElementById('settingDefaultView').value;
+      s.aiEndpoint = document.getElementById('settingAiEndpoint').value.trim();
+      s.aiApiKey = document.getElementById('settingAiApiKey').value.trim();
+      s.aiModel = document.getElementById('settingAiModel').value.trim();
       
       const newUserId = document.getElementById('settingUserId').value.trim();
       if (newUserId && newUserId !== getUserId()) {
         localStorage.setItem('userId', newUserId);
         alert('🆔 用户ID已更新！请在其他设备填入相同ID以实现同步');
       }
-
       await saveToStorageSafe({ sync: true });
       alert('✅ 设置已保存并同步到云端！');
-      
-      if (currentView !== s.defaultView) {
-        switchView(s.defaultView);
-      }
+      AIAssistant.initSystemMessage();
+      AIAssistant.updateChatConfigStatus();
+      if (currentView !== s.defaultView) { switchView(s.defaultView); }
+      renderCalendar();
     }
 
     function resetSettings() {
@@ -450,20 +502,15 @@
         settings = { ...defaultSettings };
         saveToStorageSafe({ sync: true });
         loadSettingsUI();
+        AIAssistant.initSystemMessage();
+        AIAssistant.updateChatConfigStatus();
+        renderCalendar();
         alert('已恢复默认设置');
       }
     }
 
-    // ========== 导出/导入 ==========
     function exportData() {
-      const data = {
-        version: 'cloud-sync-v4',
-        shifts: shifts,
-        month: selectedMonth,
-        settings: settings,
-        userId: getUserId(),
-        exportTime: new Date().toISOString()
-      };
+      const data = { version: 'cloud-sync-v4', shifts: shifts, month: selectedMonth, settings: settings, userId: getUserId(), exportTime: new Date().toISOString() };
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -482,18 +529,13 @@
       reader.onload = async function(e) {
         try {
           const data = JSON.parse(e.target.result);
-          
-          if (!confirm(`确认导入数据？\n用户ID: ${data.userId || '未指定'}\n工作天数: ${Object.keys(data.shifts || {}).length}\n这将覆盖本地数据！`)) {
-            return;
-          }
-
-          shifts = data.shifts || {};
-          if (data.month) selectedMonth = data.month;
-          if (data.settings) settings = data.settings;
-          if (data.userId) localStorage.setItem('userId', data.userId);
-          
+          if (data.version !== 'cloud-sync-v4' || !data.shifts || !data.settings) throw new Error('文件格式不匹配');
+          if (!confirm(`确定导入备份文件（${data.exportTime}）？这将覆盖现有数据。`)) return;
+          shifts = data.shifts;
+          selectedMonth = data.month;
+          settings = { ...defaultSettings, ...data.settings };
+          localStorage.setItem('userId', data.userId);
           await saveToStorageSafe({ sync: true });
-          
           document.getElementById('monthInput').value = selectedMonth;
           loadSettingsUI();
           renderCalendar();
@@ -507,28 +549,21 @@
       event.target.value = '';
     }
 
-    // ========== 日历渲染 ==========
     function renderCalendar() {
       const monthInput = document.getElementById('monthInput').value;
       if (!monthInput) return;
       selectedMonth = monthInput;
       saveToStorageSafe({ sync: true });
-
       const year = parseInt(selectedMonth.split('-')[0]);
       const month = parseInt(selectedMonth.split('-')[1]) - 1;
       const firstDay = new Date(year, month, 1);
       const lastDay = new Date(year, month + 1, 0);
       const daysInMonth = lastDay.getDate();
-
       const calendarEl = document.getElementById('calendar');
       calendarEl.innerHTML = '';
-
       let cols = 7;
       let showHeaders = true;
-      if (currentView === 'cycle') {
-        cols = 6;
-        showHeaders = false;
-      }
+      if (currentView === 'cycle') { cols = 6; showHeaders = false; }
 
       if (showHeaders) {
         ['日', '一', '二', '三', '四', '五', '六'].forEach(day => {
@@ -541,13 +576,10 @@
 
       if (currentView === 'week') {
         const startDayOfWeek = firstDay.getDay();
-        for (let i = 0; i < startDayOfWeek; i++) {
-          calendarEl.appendChild(document.createElement('div'));
-        }
+        for (let i = 0; i < startDayOfWeek; i++) { calendarEl.appendChild(document.createElement('div')); }
       }
 
       calendarEl.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
-
       for (let day = 1; day <= daysInMonth; day++) {
         const dateStr = `${selectedMonth}-${String(day).padStart(2, '0')}`;
         const cell = document.createElement('div');
@@ -557,601 +589,1013 @@
         const numberSpan = document.createElement('span');
         numberSpan.className = 'day-number';
         numberSpan.textContent = day;
-
         const hoursSpan = document.createElement('span');
         hoursSpan.className = 'day-hours';
-
+        const totalHours = getDailyHours(dateStr);
+        const shiftType = shifts[dateStr]?.type;
+        let typeText = '';
+        if (shiftType === 'big') typeText = '大夜';
+        else if (shiftType === 'small') typeText = '小夜';
+        else if (shiftType === 'custom') typeText = '自定义';
+        
+        hoursSpan.textContent = totalHours > 0 ? `${typeText} ${totalHours.toFixed(1)}h` : typeText;
+        const extraHours = getExtraHours(dateStr);
         const extraSpan = document.createElement('span');
         extraSpan.className = 'day-extra';
-
-        const totalSpan = document.createElement('span');
-        totalSpan.className = 'day-total';
-
-        const baseHours = getBaseHours(dateStr);
-        const extraHours = getExtraHours(dateStr);
-        const totalHours = baseHours + extraHours;
-
-        hoursSpan.textContent = baseHours > 0 ? baseHours.toFixed(1) : '';
-        if (extraHours !== 0) {
-          const sign = extraHours >= 0 ? '+' : '';
-          extraSpan.textContent = `${sign}${Math.abs(extraHours).toFixed(2)}h`;
-        }
-        if (extraHours !== 0) {
-          totalSpan.textContent = `=${totalHours.toFixed(2)}h`;
-        }
+        if (extraHours !== 0) { extraSpan.textContent = extraHours > 0 ? `(+${extraHours.toFixed(1)}h)` : `(${extraHours.toFixed(1)}h)`; } 
+        else { extraSpan.textContent = ''; }
 
         cell.appendChild(numberSpan);
-        if (baseHours > 0 || extraHours !== 0) {
-          cell.appendChild(hoursSpan);
-          if (extraHours !== 0) {
-            cell.appendChild(extraSpan);
-            cell.appendChild(totalSpan);
-          }
-        }
-
-        cell.addEventListener('mousedown', (e) => {
-          if (e.button === 0 && (e.ctrlKey || e.metaKey)) {
-            e.preventDefault();
-            toggleMultiSelect(dateStr, cell);
-            isMultiSelectMode = true;
-            updateMultiSelectUI();
-          }
-        });
-
-        let longPressTimer = null;
-        cell.addEventListener('touchstart', (e) => {
-          e.preventDefault();
-          longPressTimer = setTimeout(() => {
-            isMultiSelectMode = true;
-            updateMultiSelectUI();
-            toggleMultiSelect(dateStr, cell);
-          }, 500);
-        });
-
-        cell.addEventListener('touchend', () => {
-          if (longPressTimer) {
-            clearTimeout(longPressTimer);
-            longPressTimer = null;
-          }
-        });
-
+        cell.appendChild(hoursSpan);
+        cell.appendChild(extraSpan);
         cell.addEventListener('click', () => {
-          if (isMultiSelectMode) {
-            toggleMultiSelect(dateStr, cell);
-          } else {
-            clearMultiSelectUI();
-            multiSelectedDates.clear();
-          }
+          if (isMultiSelectMode) { toggleMultiSelect(dateStr, cell); } 
+          else { if (multiSelectedDates.size > 0) clearSelected(); toggleSingleShift(dateStr); }
         });
-
+        let pressTimer;
+        cell.addEventListener('mousedown', (e) => {
+            if (e.button === 0) { 
+                pressTimer = setTimeout(() => {
+                    isMultiSelectMode = true;
+                    updateMultiSelectUI();
+                    toggleMultiSelect(dateStr, cell);
+                }, 500);
+            }
+        });
+        cell.addEventListener('mouseup', () => clearTimeout(pressTimer));
+        cell.addEventListener('mouseleave', () => clearTimeout(pressTimer));
         cell.addEventListener('contextmenu', (e) => {
-          e.preventDefault();
-          rightClickedDate = dateStr;
-          const menu = document.getElementById('contextMenu');
-          menu.style.display = 'block';
-          menu.style.left = e.pageX + 'px';
-          menu.style.top = e.pageY + 'px';
+            e.preventDefault();
+            rightClickedDate = dateStr;
+            const menu = document.getElementById('contextMenu');
+            menu.style.display = 'block';
+            menu.style.left = e.pageX + 'px';
+            menu.style.top = e.pageY + 'px';
         });
 
         updateCellClass(cell, dateStr);
         calendarEl.appendChild(cell);
       }
-
-      document.addEventListener('click', () => {
-        document.getElementById('contextMenu').style.display = 'none';
-      });
-
+      document.addEventListener('click', () => { document.getElementById('contextMenu').style.display = 'none'; });
       checkCompliance();
       updateShiftInfo();
       updateWeekSummary();
     }
 
-    // ========== 工具函数 ==========
     function toggleMultiSelect(dateStr, cell) {
-      if (multiSelectedDates.has(dateStr)) {
-        multiSelectedDates.delete(dateStr);
-        cell.classList.remove('multi-selected');
-      } else {
-        multiSelectedDates.add(dateStr);
-        cell.classList.add('multi-selected');
-      }
-      updateMultiSelectUI();
+        if (multiSelectedDates.has(dateStr)) {
+            multiSelectedDates.delete(dateStr);
+            cell.classList.remove('multi-selected');
+        } else {
+            multiSelectedDates.add(dateStr);
+            cell.classList.add('multi-selected');
+        }
+        updateMultiSelectUI();
     }
-
+    
     function clearMultiSelectUI() {
-      document.querySelectorAll('.day-cell.multi-selected').forEach(el => {
-        el.classList.remove('multi-selected');
-      });
+        document.querySelectorAll('.day-cell.multi-selected').forEach(el => { el.classList.remove('multi-selected'); });
     }
 
     function updateCellClass(cell, dateStr) {
-      cell.classList.remove('selected-big', 'selected-small', 'custom', 'over-limit');
-      const shift = shifts[dateStr];
-      if (shift) {
-        if (shift.type === 'big') cell.classList.add('selected-big');
-        else if (shift.type === 'small') cell.classList.add('selected-small');
-        else if (shift.type === 'custom') cell.classList.add('custom');
-      }
+        cell.classList.remove('selected-big', 'selected-small', 'custom', 'over-limit');
+        const shift = shifts[dateStr];
+        if (shift) {
+            if (shift.type === 'big') cell.classList.add('selected-big');
+            else if (shift.type === 'small') cell.classList.add('selected-small');
+            else if (shift.type === 'custom') cell.classList.add('custom');
+        }
     }
 
     function updateMultiSelectUI() {
-      const indicator = document.getElementById('selectionModeIndicator');
-      const hint = document.getElementById('multiSelectHint');
-      if (isMultiSelectMode) {
-        indicator.style.display = 'inline-block';
-        hint.style.display = 'none';
-      } else {
-        indicator.style.display = 'none';
-        hint.style.display = 'block';
-      }
+        const indicator = document.getElementById('selectionModeIndicator');
+        const hint = document.getElementById('multiSelectHint');
+        if (isMultiSelectMode) { indicator.style.display = 'inline-block'; hint.style.display = 'none'; } 
+        else { indicator.style.display = 'none'; hint.style.display = 'block'; }
     }
 
     async function applyShiftToSelected(type) {
-      if (multiSelectedDates.size === 0) {
-        alert('请先选择至少一个日期');
-        return;
-      }
+        if (multiSelectedDates.size === 0) { alert('请先选择至少一个日期'); return; }
+        multiSelectedDates.forEach(dateStr => {
+            if (type === 'big') {
+                shifts[dateStr] = { type: 'big', hours: settings.bigMain, nextDayHours: settings.bigNext };
+                const nextDay = new Date(dateStr);
+                nextDay.setDate(nextDay.getDate() + 1);
+                const nextDayStr = nextDay.toISOString().split('T')[0];
+                shifts[nextDayStr] = shifts[nextDayStr] || { type: 'auto-next', hours: 0, nextDayHours: 0 };
+            } else if (type === 'small') {
+                shifts[dateStr] = { type: 'small', hours: settings.small, nextDayHours: 0 };
+            }
+        });
+        await saveToStorageSafe({ sync: true });
+        clearSelected();
+        renderCalendar();
+    }
 
-      multiSelectedDates.forEach(dateStr => {
-        if (type === 'big') {
-          shifts[dateStr] = { type: 'big', hours: settings.bigMain, nextDayHours: settings.bigNext };
-          const next = new Date(dateStr);
-          next.setDate(next.getDate() + 1);
-          const nextStr = next.toISOString().split('T')[0];
-          if (!shifts[nextStr] || shifts[nextStr].type !== 'auto-next') {
-            shifts[nextStr] = { type: 'auto-next', hours: 0 };
-          }
-        } else if (type === 'small') {
-          shifts[dateStr] = { type: 'small', hours: settings.small };
+    async function toggleSingleShift(dateStr) {
+        const currentShift = shifts[dateStr];
+        let nextType;
+        if (!currentShift) nextType = 'big';
+        else if (currentShift.type === 'big') nextType = 'small';
+        else if (currentShift.type === 'small') nextType = 'none';
+        else nextType = 'big';
+
+        if (currentShift?.type === 'big') {
+            const nextDay = new Date(dateStr);
+            nextDay.setDate(nextDay.getDate() + 1);
+            const nextDayStr = nextDay.toISOString().split('T')[0];
+            if (shifts[nextDayStr]?.type === 'auto-next') delete shifts[nextDayStr];
         }
-        if (shifts[dateStr].extra !== undefined) delete shifts[dateStr].extra;
-        if (shifts[dateStr].extraMeta) delete shifts[dateStr].extraMeta;
-      });
 
-      await saveToStorageSafe({ sync: true });
-      clearMultiSelectUI();
-      multiSelectedDates.clear();
-      isMultiSelectMode = false;
-      updateMultiSelectUI();
-      renderCalendar();
+        if (nextType === 'big') {
+            shifts[dateStr] = { type: 'big', hours: settings.bigMain, nextDayHours: settings.bigNext };
+            const nextDay = new Date(dateStr);
+            nextDay.setDate(nextDay.getDate() + 1);
+            const nextDayStr = nextDay.toISOString().split('T')[0];
+            shifts[nextDayStr] = shifts[nextDayStr] || { type: 'auto-next', hours: 0, nextDayHours: 0 };
+        } else if (nextType === 'small') {
+            shifts[dateStr] = { type: 'small', hours: settings.small, nextDayHours: 0 };
+        } else {
+            delete shifts[dateStr];
+        }
+        await saveToStorageSafe({ sync: true });
+        renderCalendar();
     }
 
     async function deleteSelected() {
-      if (multiSelectedDates.size === 0) {
-        alert('请先选择要删除的日期');
-        return;
-      }
-
-      multiSelectedDates.forEach(dateStr => {
-        const shift = shifts[dateStr];
-        delete shifts[dateStr];
-
-        if (shift && shift.type === 'big') {
-          const next = new Date(dateStr);
-          next.setDate(next.getDate() + 1);
-          const nextStr = next.toISOString().split('T')[0];
-          if (shifts[nextStr] && shifts[nextStr].type === 'auto-next') {
-            delete shifts[nextStr];
-          }
-        }
-      });
-
-      await saveToStorageSafe({ sync: true });
-      clearMultiSelectUI();
-      multiSelectedDates.clear();
-      isMultiSelectMode = false;
-      updateMultiSelectUI();
-      renderCalendar();
+        if (multiSelectedDates.size === 0) { alert('请先选择至少一个日期'); return; }
+        if (!confirm(`确定删除这 ${multiSelectedDates.size} 个日期的排班记录吗？`)) return;
+        multiSelectedDates.forEach(dateStr => {
+            if (shifts[dateStr]?.type === 'big') {
+                const nextDay = new Date(dateStr);
+                nextDay.setDate(nextDay.getDate() + 1);
+                const nextDayStr = nextDay.toISOString().split('T')[0];
+                if (shifts[nextDayStr]?.type === 'auto-next') delete shifts[nextDayStr];
+            }
+            delete shifts[dateStr];
+        });
+        await saveToStorageSafe({ sync: true });
+        clearSelected();
+        renderCalendar();
     }
 
     async function deleteSingleShift() {
-      if (!rightClickedDate) return;
-      const shift = shifts[rightClickedDate];
-      delete shifts[rightClickedDate];
-
-      if (shift && shift.type === 'big') {
-        const next = new Date(rightClickedDate);
-        next.setDate(next.getDate() + 1);
-        const nextStr = next.toISOString().split('T')[0];
-        if (shifts[nextStr] && shifts[nextStr].type === 'auto-next') {
-          delete shifts[nextStr];
+        document.getElementById('contextMenu').style.display = 'none';
+        if (!rightClickedDate) return;
+        if (shifts[rightClickedDate]?.type === 'big') {
+            const nextDay = new Date(rightClickedDate);
+            nextDay.setDate(nextDay.getDate() + 1);
+            const nextDayStr = nextDay.toISOString().split('T')[0];
+            if (shifts[nextDayStr]?.type === 'auto-next') delete shifts[nextDayStr];
         }
-      }
-
-      await saveToStorageSafe({ sync: true });
-      document.getElementById('contextMenu').style.display = 'none';
-      renderCalendar();
+        delete shifts[rightClickedDate];
+        await saveToStorageSafe({ sync: true });
+        rightClickedDate = '';
+        renderCalendar();
     }
 
     function clearSelected() {
-      clearMultiSelectUI();
-      multiSelectedDates.clear();
-      isMultiSelectMode = false;
-      updateMultiSelectUI();
+        clearMultiSelectUI();
+        multiSelectedDates.clear();
+        isMultiSelectMode = false;
+        updateMultiSelectUI();
     }
 
     function openExtraModal() {
-      if (multiSelectedDates.size === 0) {
-        alert('请先选择至少一个日期');
-        return;
-      }
-      document.getElementById('extraInput').value = '';
-      document.querySelector('input[name="unit"][value="hour"]').checked = true;
-      document.getElementById('extraModal').style.display = 'flex';
+        if (multiSelectedDates.size === 0) { alert('请先选择至少一个日期'); return; }
+        document.getElementById('extraInput').value = '';
+        document.querySelector('input[name="unit"][value="hour"]').checked = true;
+        document.getElementById('extraModal').style.display = 'flex';
     }
 
     function closeExtraModal() {
-      document.getElementById('extraModal').style.display = 'none';
+        document.getElementById('extraModal').style.display = 'none';
     }
 
     async function applyExtra() {
-      const inputEl = document.getElementById('extraInput');
-      const valueStr = inputEl.value.trim();
-      if (!valueStr) {
+        const inputEl = document.getElementById('extraInput');
+        const valueStr = inputEl.value.trim();
+        if (!valueStr) { closeExtraModal(); return; }
+        const value = parseFloat(valueStr);
+        if (isNaN(value)) { alert('请输入有效数字'); return; }
+        const unitRadio = document.querySelector('input[name="unit"]:checked');
+        if (!unitRadio) { alert('请选择单位（小时或分钟）'); return; }
+        const unit = unitRadio.value;
+        let extraHours = 0;
+        if (unit === 'hour') extraHours = value;
+        else extraHours = value / 60;
+
+        multiSelectedDates.forEach(dateStr => {
+            if (!shifts[dateStr]) shifts[dateStr] = { type: 'custom', hours: 0, nextDayHours: 0 };
+            shifts[dateStr].extra = (shifts[dateStr].extra || 0) + extraHours;
+            shifts[dateStr].extraMeta = { value, unit };
+            if (Math.abs(shifts[dateStr].extra) < 0.001) { delete shifts[dateStr].extra; delete shifts[dateStr].extraMeta; }
+        });
+        await saveToStorageSafe({ sync: true });
         closeExtraModal();
-        return;
-      }
-
-      const value = parseFloat(valueStr);
-      if (isNaN(value)) {
-        alert('请输入有效数字');
-        return;
-      }
-
-      const unitRadio = document.querySelector('input[name="unit"]:checked');
-      if (!unitRadio) {
-        alert('请选择单位（小时或分钟）');
-        return;
-      }
-      const unit = unitRadio.value;
-
-      let extraHours = 0;
-      if (unit === 'hour') {
-        extraHours = value;
-      } else {
-        extraHours = value / 60;
-      }
-
-      multiSelectedDates.forEach(dateStr => {
-        if (!shifts[dateStr]) {
-          shifts[dateStr] = { type: 'custom', hours: 0 };
-        }
-        shifts[dateStr].extra = (shifts[dateStr].extra || 0) + extraHours;
-        shifts[dateStr].extraMeta = { value, unit };
-        if (Math.abs(shifts[dateStr].extra) < 0.001) {
-          delete shifts[dateStr].extra;
-          delete shifts[dateStr].extraMeta;
-        }
-      });
-
-      await saveToStorageSafe({ sync: true });
-      closeExtraModal();
-      clearMultiSelectUI();
-      multiSelectedDates.clear();
-      isMultiSelectMode = false;
-      updateMultiSelectUI();
-      renderCalendar();
+        clearMultiSelectUI();
+        multiSelectedDates.clear();
+        isMultiSelectMode = false;
+        updateMultiSelectUI();
+        renderCalendar();
     }
 
     function getBaseHours(dateStr) {
-      const shift = shifts[dateStr];
-      if (!shift) return 0;
-      if (shift.type === 'big') return shift.hours;
-      if (shift.type === 'auto-next') {
-        const prev = new Date(dateStr);
-        prev.setDate(prev.getDate() - 1);
-        const prevStr = prev.toISOString().split('T')[0];
-        const prevShift = shifts[prevStr];
-        return prevShift && prevShift.type === 'big' ? prevShift.nextDayHours : 0;
-      }
-      return shift.hours || 0;
+        const shift = shifts[dateStr];
+        if (!shift) return 0;
+        if (shift.type === 'big' || shift.type === 'small' || shift.type === 'custom') return shift.hours;
+        if (shift.type === 'auto-next') {
+            const prev = new Date(dateStr);
+            prev.setDate(prev.getDate() - 1);
+            const prevStr = prev.toISOString().split('T')[0];
+            const prevShift = shifts[prevStr];
+            return prevShift?.nextDayHours || 0;
+        }
+        return 0;
     }
 
     function getExtraHours(dateStr) {
-      const shift = shifts[dateStr];
-      return shift && shift.extra ? shift.extra : 0;
+        const shift = shifts[dateStr];
+        return shift?.extra || 0;
     }
 
     function getDailyHours(dateStr) {
-      return getBaseHours(dateStr) + getExtraHours(dateStr);
+        return getBaseHours(dateStr) + getExtraHours(dateStr);
     }
 
-    function calculateMonthlyTotalHours(monthKey) {
-      const [yearStr, monthStr] = monthKey.split('-');
-      const year = parseInt(yearStr);
-      const month = parseInt(monthStr) - 1;
-      const daysInMonth = new Date(year, month + 1, 0).getDate();
-
-      let total = 0;
-      for (let day = 1; day <= daysInMonth; day++) {
-        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-        total += getDailyHours(dateStr);
-      }
-      return total;
+    function calculateMonthlyTotalHours(monthStr) {
+        let total = 0;
+        for (const dateStr in shifts) {
+            if (dateStr.startsWith(monthStr)) total += getDailyHours(dateStr);
+        }
+        return total;
     }
 
     function generateAllRelevant7DayWindows() {
-      const [yearStr, monthStr] = selectedMonth.split('-');
-      const year = parseInt(yearStr);
-      const month = parseInt(monthStr) - 1;
-      const firstOfMonth = new Date(year, month, 1);
-      const lastOfMonth = new Date(year, month + 1, 0);
-      const startDate = new Date(firstOfMonth);
-      startDate.setDate(startDate.getDate() - 6);
-      const windows = [];
-      let current = new Date(startDate);
-
-      while (true) {
-        const windowEnd = new Date(current);
-        windowEnd.setDate(current.getDate() + 6);
-        if (current > lastOfMonth) break;
-        if (windowEnd >= firstOfMonth && current <= lastOfMonth) {
-          windows.push({ start: new Date(current), end: new Date(windowEnd) });
+        const windows = [];
+        const [year, month] = selectedMonth.split('-').map(Number);
+        const firstDayOfMonth = new Date(year, month - 1, 1);
+        const lastDayOfMonth = new Date(year, month, 0);
+        const start = new Date(firstDayOfMonth);
+        start.setDate(start.getDate() - 6);
+        const end = lastDayOfMonth;
+        let current = new Date(start);
+        while (current <= end) {
+            const windowEnd = new Date(current);
+            windowEnd.setDate(windowEnd.getDate() + 6);
+            if (windowEnd >= firstDayOfMonth) windows.push({ start: new Date(current), end: windowEnd });
+            current.setDate(current.getDate() + 1);
         }
-        current.setDate(current.getDate() + 1);
-      }
-      return windows;
+        return windows;
     }
 
     function checkCompliance() {
-      const windows = generateAllRelevant7DayWindows();
-      weekSummaries = [];
-      const overLimitDates = new Set();
-
-      windows.forEach(w => {
-        let total = 0;
-        const datesInRange = [];
-        for (let i = 0; i < 7; i++) {
-          const d = new Date(w.start);
-          d.setDate(d.getDate() + i);
-          const iso = d.toISOString().split('T')[0];
-          datesInRange.push(iso);
-          total += getDailyHours(iso);
-        }
-
-        const violation = total > settings.limit;
-        weekSummaries.push({
-          start: w.start.toISOString().split('T')[0],
-          end: w.end.toISOString().split('T')[0],
-          total: total,
-          dates: datesInRange,
-          violation: violation
+        const windows = generateAllRelevant7DayWindows();
+        weekSummaries = [];
+        const overLimitDates = new Set();
+        
+        windows.forEach(w => {
+            let total = 0;
+            const datesInRange = [];
+            for (let i = 0; i < 7; i++) {
+                const d = new Date(w.start);
+                d.setDate(d.getDate() + i);
+                const iso = d.toISOString().split('T')[0];
+                datesInRange.push(iso);
+                total += getDailyHours(iso);
+            }
+            const violation = total > settings.limit;
+            weekSummaries.push({ start: w.start.toISOString().split('T')[0], end: w.end.toISOString().split('T')[0], total: total, dates: datesInRange, violation: violation });
+            if (violation) { datesInRange.forEach(d => overLimitDates.add(d)); }
         });
-
-        if (violation) {
-          datesInRange.forEach(d => overLimitDates.add(d));
-        }
-      });
-
-      document.querySelectorAll('.day-cell').forEach(cell => {
-        const dateStr = cell.dataset.date;
-        if (dateStr && overLimitDates.has(dateStr)) {
-          cell.classList.add('over-limit');
-        } else {
-          cell.classList.remove('over-limit');
-        }
-      });
+        document.querySelectorAll('.day-cell').forEach(cell => {
+            const dateStr = cell.dataset.date;
+            if (dateStr && overLimitDates.has(dateStr)) cell.classList.add('over-limit');
+            else cell.classList.remove('over-limit');
+        });
     }
 
     function updateShiftInfo() {
-      const total = calculateMonthlyTotalHours(selectedMonth);
-      const hasOverLimit = weekSummaries.some(w => w.violation);
-      const infoEl = document.getElementById('shiftInfo');
-      infoEl.innerHTML = `
-        <p>本月总工时：${total.toFixed(2)} 小时</p>
-        <div class="result ${hasOverLimit ? 'warn' : 'ok'}">
-          ${hasOverLimit ? `⚠️ 警告：存在连续7天工时超过 ${settings.limit} 小时！` : `✅ 当前安排符合规定（任意7天≤${settings.limit}小时）`}
-        </div>
-      `;
+        const total = calculateMonthlyTotalHours(selectedMonth);
+        const hasOverLimit = weekSummaries.some(w => w.violation);
+        const infoEl = document.getElementById('shiftInfo');
+        infoEl.innerHTML = `<p>本月总工时：${total.toFixed(2)} 小时</p><div class="result ${hasOverLimit ? 'warn' : 'ok'}">${hasOverLimit ? `⚠️ 警告：存在连续7天工时超过 ${settings.limit} 小时！` : `✅ 当前安排符合规定（任意7天≤${settings.limit}小时）`}</div>`;
     }
 
     function updateWeekSummary() {
-      const listEl = document.getElementById('weekList');
-      if (weekSummaries.length === 0) {
-        listEl.innerHTML = '<p>暂无7天周期数据</p>';
-        return;
-      }
-
-      let html = '';
-      weekSummaries.forEach(w => {
-        const cls = w.violation ? 'week-item violation' : 'week-item';
-        const startDisp = formatDate(w.start);
-        const endDisp = formatDate(w.end);
-        html += `<div class="${cls}">${startDisp} 至 ${endDisp}：${w.total.toFixed(2)} 小时</div>`;
-      });
-      listEl.innerHTML = html;
+        const listEl = document.getElementById('weekList');
+        if (weekSummaries.length === 0) { listEl.innerHTML = '<p>暂无7天周期数据</p>'; return; }
+        let html = '';
+        weekSummaries.forEach(w => {
+            const startMonth = w.start.substring(0, 7);
+            const endMonth = w.end.substring(0, 7);
+            if (startMonth !== selectedMonth && endMonth !== selectedMonth && w.start.substring(0, 7) !== selectedMonth) return;
+            const cls = w.violation ? 'week-item violation' : 'week-item';
+            html += `<div class="${cls}">${w.start} 至 ${w.end}：总工时 ${w.total.toFixed(2)} 小时${w.violation ? `<span style="color:red;font-weight:bold;"> [超限]</span>` : ''}</div>`;
+        });
+        listEl.innerHTML = html || '<p>暂无7天周期数据</p>';
+    }
+    
+    function getDetailedShifts(startDateStr, endDateStr) {
+        if (!startDateStr || !endDateStr) return [];
+        const startDate = new Date(startDateStr);
+        const endDate = new Date(endDateStr);
+        if (startDate > endDate) return [];
+        const detailedShifts = [];
+        const currentDate = new Date(startDate);
+        while (currentDate <= endDate) {
+            const dateStr = currentDate.toISOString().split('T')[0];
+            const shiftData = shifts[dateStr] || { type: 'none', hours: 0, nextDayHours: 0, extra: 0 };
+            const baseHours = getBaseHours(dateStr);
+            const extraHours = getExtraHours(dateStr);
+            const totalHours = baseHours + extraHours;
+            if (totalHours > 0 || (shiftData.type !== 'none' && shiftData.type !== 'auto-next')) {
+                detailedShifts.push({ date: dateStr, shiftType: shiftData.type, baseHours: parseFloat(baseHours.toFixed(2)), extraHours: parseFloat(extraHours.toFixed(2)), totalHours: parseFloat(totalHours.toFixed(2)), raw: shiftData });
+            }
+            currentDate.setDate(currentDate.getDate() + 1);
+        }
+        return detailedShifts;
     }
 
-    function formatDate(isoDate) {
-      const d = new Date(isoDate);
-      return `${d.getMonth() + 1}/${d.getDate()}`;
-    }
+    function calculateStatsForRange() {
+        const startInput = document.getElementById('statStartDate').value;
+        const endInput = document.getElementById('statEndDate').value;
 
-    // ========== 统计分析 ==========
-    function initDateRangeForStats() {
-      const today = new Date();
-      const oneYearAgo = new Date();
-      oneYearAgo.setFullYear(today.getFullYear() - 1);
+        if (!startInput || !endInput) return null;
 
-      const formatDateInput = d => d.toISOString().split('T')[0];
-      document.getElementById('statStartDate').value = formatDateInput(oneYearAgo);
-      document.getElementById('statEndDate').value = formatDateInput(today);
-    }
+        const [sYear, sMonth, sDay] = startInput.split('-').map(Number);
+        const [eYear, eMonth, eDay] = endInput.split('-').map(Number);
+        
+        const startDate = new Date(sYear, sMonth - 1, sDay);
+        const endDate = new Date(eYear, eMonth - 1, eDay);
+        endDate.setHours(23, 59, 59, 999);
 
-    function getMonthsBetween(start, end) {
-      const months = [];
-      const current = new Date(start);
-      while (current <= end) {
-        const key = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}`;
-        months.push(key);
-        current.setMonth(current.getMonth() + 1);
-      }
-      return months;
+        if (startDate > endDate) return null;
+
+        const allMonths = getMonthsBetween(startDate, endDate);
+        let totalWorkDays = 0;
+        let totalHours = 0;
+        let bigCount = 0, smallCount = 0, customCount = 0, autoNextCount = 0;
+        let workedDates = [];
+        let complianceViolations = 0;
+
+        const detailedShifts = getDetailedShifts(startInput, endInput);
+
+        detailedShifts.forEach(s => {
+            if (s.totalHours > 0) {
+                totalWorkDays++;
+                totalHours += s.totalHours;
+                workedDates.push(new Date(s.date).getTime());
+            }
+            if (s.shiftType === 'big') bigCount++;
+            else if (s.shiftType === 'small') smallCount++;
+            else if (s.shiftType === 'custom') customCount++;
+            else if (s.shiftType === 'auto-next') autoNextCount++;
+        });
+
+        const allRelevantWindows = generateAllRelevant7DayWindowsForRange(startDate, endDate);
+        allRelevantWindows.forEach(w => {
+            let total = 0;
+            for (let i = 0; i < 7; i++) {
+                const d = new Date(w.start);
+                d.setDate(d.getDate() + i);
+                const iso = d.toISOString().split('T')[0];
+                total += getDailyHours(iso);
+            }
+            if (total > settings.limit) complianceViolations++;
+        });
+
+        let maxConsecutive = 0;
+        workedDates.sort((a, b) => a - b);
+        if (workedDates.length > 0) {
+            maxConsecutive = 1;
+            let currentStreak = 1;
+            for (let i = 1; i < workedDates.length; i++) {
+                const diff = (workedDates[i] - workedDates[i - 1]) / (1000 * 60 * 60 * 24);
+                if (Math.round(diff) === 1) {
+                    currentStreak++;
+                    maxConsecutive = Math.max(maxConsecutive, currentStreak);
+                } else {
+                    currentStreak = 1;
+                }
+            }
+        }
+
+        const totalMonths = allMonths.length;
+        const avgMonthlyHours = totalMonths > 0 ? (totalHours / totalMonths) : 0;
+        const avgDailyHours = totalWorkDays > 0 ? (totalHours / totalWorkDays) : 0;
+
+        return {
+            dateRange: `${startInput} 至 ${endInput}`,
+            totalHours: parseFloat(totalHours.toFixed(2)),
+            totalWorkDays,
+            avgMonthlyHours: parseFloat(avgMonthlyHours.toFixed(2)),
+            avgDailyHours: parseFloat(avgDailyHours.toFixed(2)),
+            bigCount, smallCount, customCount, autoNextCount, maxConsecutive, totalMonths, complianceViolations, allMonths,
+            detailedShifts: detailedShifts.filter(s => s.totalHours > 0)
+        };
     }
 
     function renderStatsWithRange() {
-      const startInput = document.getElementById('statStartDate').value;
-      const endInput = document.getElementById('statEndDate').value;
-
-      if (!startInput || !endInput) {
-        alert('请选择完整的起止日期');
-        return;
-      }
-
-      const startDate = new Date(startInput);
-      const endDate = new Date(endInput);
-      if (startDate > endDate) {
-        alert('开始日期不能晚于结束日期');
-        return;
-      }
-
-      const allMonths = getMonthsBetween(startDate, endDate);
-
-      let totalWorkDays = 0;
-      let totalHours = 0;
-      let bigCount = 0, smallCount = 0, customCount = 0;
-      let workedDates = [];
-
-      const currentDate = new Date(startDate);
-      while (currentDate <= endDate) {
-        const dateStr = currentDate.toISOString().split('T')[0];
-        const h = getDailyHours(dateStr);
-        if (h > 0) {
-          totalHours += h;
-          totalWorkDays++;
-          workedDates.push(new Date(dateStr));
-
-          const shift = shifts[dateStr];
-          if (shift) {
-            if (shift.type === 'big') bigCount++;
-            else if (shift.type === 'small') smallCount++;
-            else if (shift.type === 'custom') customCount++;
-          }
+        currentStatsSummary = calculateStatsForRange();
+        const aiResultStatusEl = document.getElementById('aiSummaryResultStatus');
+        
+        if (!currentStatsSummary) {
+            document.getElementById('statsGrid').innerHTML = '<p>请选择有效的日期范围。</p>';
+            aiResultStatusEl.textContent = '❌ 请选择有效的日期范围。';
+            resetPanelChat('stats');
+            return;
         }
-        currentDate.setDate(currentDate.getDate() + 1);
-      }
 
-      let maxConsecutive = 0;
-      if (workedDates.length > 0) {
-        workedDates.sort((a, b) => a - b);
-        let currentStreak = 1;
-        maxConsecutive = 1;
-        for (let i = 1; i < workedDates.length; i++) {
-          const diff = (workedDates[i] - workedDates[i - 1]) / (1000 * 60 * 60 * 24);
-          if (diff === 1) {
-            currentStreak++;
-            maxConsecutive = Math.max(maxConsecutive, currentStreak);
-          } else {
-            currentStreak = 1;
-          }
-        }
-      }
+        // 修复：解构并使用 dateRange 属性
+        const { dateRange, totalHours, totalWorkDays, avgMonthlyHours, avgDailyHours, bigCount, smallCount, customCount, maxConsecutive, complianceViolations, allMonths } = currentStatsSummary;
+        
+        const stats = [
+            { label: '统计时间段', value: dateRange }, // 直接使用修复后的 dateRange 属性
+            { label: '总工时', value: `${totalHours} 小时` },
+            { label: '平均每月工时', value: `${avgMonthlyHours} 小时` },
+            { label: '工作天数', value: `${totalWorkDays} 天` },
+            { label: '平均每日工时', value: `${avgDailyHours} 小时` },
+            { label: '大夜班次数', value: `${bigCount} 次` },
+            { label: '小夜班次数', value: `${smallCount} 次` },
+            { label: '自定义/额外班次', value: `${customCount} 次` },
+            { label: '最长连续工作', value: `${maxConsecutive} 天` },
+            { label: `连续7天超限次数 (限${settings.limit}h)`, value: `${complianceViolations} 次`, isViolation: complianceViolations > 0 },
+        ];
+        let html = '';
+        stats.forEach(stat => {
+            const cls = stat.isViolation ? 'warn' : '';
+            html += `<div class="stat-item ${cls}"><label>${stat.label}</label><div class="stat-value">${stat.value}</div></div>`;
+        });
+        document.getElementById('statsGrid').innerHTML = html;
 
-      const totalMonths = allMonths.length;
-      const avgMonthlyHours = totalMonths > 0 ? (totalHours / totalMonths) : 0;
-      const avgDailyHours = totalWorkDays > 0 ? (totalHours / totalWorkDays) : 0;
-
-      const stats = [
-        { label: '统计时间段', value: `${startInput} 至 ${endInput}` },
-        { label: '总工时', value: `${totalHours.toFixed(2)} 小时` },
-        { label: '平均每月工时', value: `${avgMonthlyHours.toFixed(2)} 小时` },
-        { label: '工作天数', value: `${totalWorkDays} 天` },
-        { label: '平均每日工时', value: `${avgDailyHours.toFixed(2)} 小时` },
-        { label: '大夜班次数', value: `${bigCount} 次` },
-        { label: '小夜班次数', value: `${smallCount} 次` },
-        { label: '自定义班次', value: `${customCount} 次` },
-        { label: '最长连续工作', value: `${maxConsecutive} 天` },
-        { label: '覆盖月份数', value: `${totalMonths} 个月` }
-      ];
-
-      const grid = document.getElementById('statsGrid');
-      grid.innerHTML = '';
-      stats.forEach(item => {
-        const div = document.createElement('div');
-        div.className = 'stat-item';
-        div.innerHTML = `<div>${item.label}</div><div class="stat-value">${item.value}</div>`;
-        grid.appendChild(div);
-      });
-
-      renderMonthlyChart(allMonths);
+        renderMonthlyHoursChart(allMonths, currentStatsSummary.dateRange.split(' 至 ')[0], currentStatsSummary.dateRange.split(' 至 ')[1]);
+        aiResultStatusEl.textContent = '✅ 数据分析已完成。点击 "启动 AI 总结" 按钮开始对话。';
+        // 自动重置对话，准备新的总结
+        resetPanelChat('stats', aiResultStatusEl.textContent);
     }
 
-    function renderMonthlyChart(monthKeys) {
-      const labels = [];
-      const data = [];
+    function getMonthsBetween(startDate, endDate) {
+        const months = [];
+        let current = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+        const end = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
 
-      monthKeys.forEach(m => {
-        const total = calculateMonthlyTotalHours(m);
-        const [y, mNum] = m.split('-');
-        labels.push(`${y}-${mNum}`);
-        data.push(parseFloat(total.toFixed(2)));
-      });
+        while (current <= end) {
+            const year = current.getFullYear();
+            const month = String(current.getMonth() + 1).padStart(2, '0');
+            months.push(`${year}-${month}`);
+            current.setMonth(current.getMonth() + 1);
+        }
+        return months;
+    }
 
-      const ctx = document.getElementById('monthlyChart').getContext('2d');
+    function generateAllRelevant7DayWindowsForRange(startDate, endDate) {
+        const windows = [];
+        const start = new Date(startDate);
+        start.setDate(start.getDate() - 6);
+        const end = endDate;
+        let current = new Date(start);
+        while (current <= end) {
+            const windowEnd = new Date(current);
+            windowEnd.setDate(windowEnd.getDate() + 6);
+            windows.push({ start: new Date(current), end: windowEnd });
+            current.setDate(current.getDate() + 1);
+        }
+        return windows;
+    }
 
-      if (chartInstance) {
-        chartInstance.destroy();
-      }
+    function renderMonthlyHoursChart(months, startDateStr, endDateStr) {
+        const monthlyData = {};
+        months.forEach(month => { monthlyData[month] = { total: 0, workDays: 0 }; });
+        const detailedShifts = getDetailedShifts(startDateStr, endDateStr);
+        detailedShifts.forEach(s => {
+            const month = s.date.substring(0, 7);
+            if (monthlyData[month]) {
+                monthlyData[month].total += s.totalHours;
+                if (s.totalHours > 0) monthlyData[month].workDays += 1;
+            }
+        });
+        const labels = Object.keys(monthlyData).sort();
+        const hours = labels.map(m => parseFloat(monthlyData[m].total.toFixed(2)));
+        const workDays = labels.map(m => monthlyData[m].workDays);
 
-      chartInstance = new Chart(ctx, {
-        type: 'bar',
-        data: {
-          labels: labels,
-          datasets: [{
-            label: '每月总工时（小时）',
-            data: data,
-            backgroundColor: 'rgba(24, 144, 255, 0.6)',
-            borderColor: 'rgba(24, 144, 255, 1)',
-            borderWidth: 1
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          scales: {
-            y: {
-              beginAtZero: true,
-              title: { display: true, text: '工时（小时）' }
+        const ctx = document.getElementById('monthlyChart').getContext('2d');
+        if (chartInstance) chartInstance.destroy();
+
+        chartInstance = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    { label: '月总工时 (小时)', data: hours, backgroundColor: 'rgba(24, 144, 255, 0.7)', yAxisID: 'y' },
+                    { label: '月工作天数 (天)', data: workDays, backgroundColor: 'rgba(82, 196, 26, 0.7)', yAxisID: 'y1' }
+                ]
             },
-            x: {
-              title: { display: true, text: '月份' }
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: { type: 'linear', display: true, position: 'left', title: { display: true, text: '工时 (小时)' }, grid: { drawOnChartArea: true } },
+                    y1: { type: 'linear', display: true, position: 'right', title: { display: true, text: '工作天数 (天)' }, grid: { drawOnChartArea: false } }
+                },
+                plugins: { legend: { position: 'top' }, title: { display: true, text: '每月工时与天数概览' } }
             }
-          },
-          plugins: {
-            legend: { display: true },
-            tooltip: {
-              callbacks: {
-                label: function(context) {
-                  return `工时: ${context.parsed.y} 小时`;
-                }
-              }
-            }
-          }
-        }
-      });
+        });
     }
 
-    // ========== 初始化 ==========
+    // ========== AI 通用服务函数 ==========
+    async function runChatCompletion(messages, endpoint, apiKey, model, isStreaming = false, chunkCallback = null) {
+      try {
+          const response = await fetch(endpoint, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+              body: JSON.stringify({ model: model, messages: messages, stream: isStreaming })
+          });
+          if (!response.ok) { const errorText = await response.text(); throw new Error(`API 调用失败 [${response.status}]: ${errorText.substring(0, 100)}...`); }
+
+          if (isStreaming) {
+              if (!response.body) throw new Error("API响应没有正文（可能不支持流式传输）。");
+              const reader = response.body.getReader();
+              const decoder = new TextDecoder("utf-8");
+              let fullText = "";
+              let buffer = "";
+              try {
+                  while (true) {
+                      const { done, value } = await reader.read();
+                      if (done) break;
+                      buffer += decoder.decode(value, { stream: true });
+                      let lines = buffer.split('\n');
+                      buffer = lines.pop();
+                      for (const line of lines) {
+                          const trimmedLine = line.trim();
+                          if (!trimmedLine || trimmedLine === 'data: [DONE]') continue;
+                          if (trimmedLine.startsWith('data: ')) {
+                              try {
+                                  const jsonString = trimmedLine.substring(6);
+                                  const data = JSON.parse(jsonString);
+                                  const delta = data.choices?.[0]?.delta?.content || '';
+                                  if (delta) { fullText += delta; if (chunkCallback) chunkCallback(delta); }
+                              } catch (e) { console.warn("JSON解析跳过:", e); }
+                          }
+                      }
+                  }
+              } catch (e) { console.error("读取流式数据失败:", e); throw e; } finally { reader.releaseLock(); }
+              return { content: fullText };
+          } else {
+              const jsonResponse = await response.json();
+              return { content: jsonResponse.choices?.[0]?.message?.content || '' };
+          }
+      } catch (error) { console.error("RunChatCompletion Error:", error); throw error; }
+    }
+
+    // ========== AI 对话逻辑 (Calendar & Stats 面板) ==========
+    
+    // 存储面板的对话历史和状态
+    let panelChatHistory = { calendar: [], stats: [] };
+    let isPanelTyping = { calendar: false, stats: false };
+    // 存储面板的系统级上下文数据
+    let panelContexts = { calendar: { system: '', data: '' }, stats: { system: '', data: '' } };
+
+    function getPanelChatElements(panelId) {
+        return {
+            historyEl: document.getElementById(`${panelId}ChatHistory`),
+            inputEl: document.getElementById(`${panelId}ChatInput`),
+            inputContainerEl: document.getElementById(`${panelId}ChatInputContainer`),
+            statusEl: document.getElementById(panelId === 'calendar' ? 'complianceAdviceStatus' : 'aiSummaryResultStatus'),
+            sendBtn: document.querySelector(`#${panelId}ChatInputContainer button`)
+        };
+    }
+
+    function displayPanelMessage(panelId, role, content, save = true) {
+        const { historyEl } = getPanelChatElements(panelId);
+        if (!historyEl) return;
+        
+        const msgDiv = document.createElement('div');
+        msgDiv.className = 'chat-message ' + (role === 'user' ? 'chat-user' : 'chat-ai');
+        
+        const formattedContent = content
+            .replace(/```(.*?)\n([\s\S]*?)```/gs, (match, lang, code) => { return `<pre><code>${code.trim()}</code></pre>`; })
+            .replace(/\n/g, '<br>');
+            
+        msgDiv.innerHTML = formattedContent;
+        historyEl.appendChild(msgDiv);
+        historyEl.scrollTop = historyEl.scrollHeight;
+
+        if (save && role !== 'system') {
+            panelChatHistory[panelId].push({ role, content });
+        }
+    }
+    
+    // 重置面板对话状态
+    function resetPanelChat(panelId, initialMessage = null) {
+        const { historyEl, inputContainerEl, statusEl } = getPanelChatElements(panelId);
+        panelChatHistory[panelId] = [];
+        isPanelTyping[panelId] = false;
+        
+        if (historyEl) historyEl.innerHTML = '';
+        if (statusEl) {
+            statusEl.style.display = 'block';
+            if (initialMessage) statusEl.textContent = initialMessage;
+        }
+        if (inputContainerEl) inputContainerEl.style.display = 'none';
+    }
+
+    // 核心发送函数（供 Calendar 和 Stats 面板使用）
+    async function sendPanelChatMessage(panelId, initialPrompt = null) {
+        const { inputEl, inputContainerEl, statusEl, historyEl, sendBtn } = getPanelChatElements(panelId);
+        
+        const userMessage = initialPrompt || inputEl.value.trim();
+        if (!userMessage && !initialPrompt) return;
+        if (isPanelTyping[panelId]) return;
+        if (!settings.aiEndpoint || !settings.aiApiKey) {
+            displayPanelMessage(panelId, 'ai', '❌ 错误：请在“设置”中配置 AI 服务终端点和 API 密钥。', false);
+            return;
+        }
+
+        // 隐藏状态信息，显示聊天框
+        if (statusEl) statusEl.style.display = 'none'; 
+        historyEl.style.display = 'block';
+        inputContainerEl.style.display = 'flex'; 
+
+        // 如果不是初始启动（即用户在输入框中发送的消息），则显示用户消息
+        if (!initialPrompt) {
+            displayPanelMessage(panelId, 'user', userMessage);
+            inputEl.value = '';
+        }
+        
+        // 禁用输入
+        isPanelTyping[panelId] = true;
+        inputEl.disabled = true;
+        sendBtn.disabled = true;
+
+        displayPanelMessage(panelId, 'ai', '🧠 AI 正在思考中，请稍候...', false);
+        const aiMessageEl = historyEl.lastElementChild;
+        let finalResponse = '';
+        let accumulatedText = '';
+
+        try {
+            // 构造 messages
+            const systemMessage = panelContexts[panelId].system;
+            const contextData = panelContexts[panelId].data;
+            
+            // 1. System Prompt
+            const messagesToSend = [{ role: 'system', content: systemMessage }];
+            // 2. Context Data (作为 User 的第一条消息，提供数据基础)
+            messagesToSend.push({ role: 'user', content: contextData });
+            // 3. Historical Conversation
+            messagesToSend.push(...panelChatHistory[panelId].filter(m => m.role !== 'system')); 
+
+            // 4. Current Prompt/Message
+            if (initialPrompt) {
+                messagesToSend.push({ role: 'user', content: `请基于我提供的排班数据，直接给出你的初始分析和建议。` });
+            } else {
+                 messagesToSend.push({ role: 'user', content: userMessage });
+            }
+            
+            const completion = await runChatCompletion(messagesToSend, settings.aiEndpoint, settings.aiApiKey, settings.aiModel, true, (chunk) => {
+                accumulatedText += chunk;
+                const formattedContent = accumulatedText
+                    .replace(/```(.*?)\n([\s\S]*?)```/gs, (match, lang, code) => { return `<pre><code>${code.trim()}</code></pre>`; })
+                    .replace(/\n/g, '<br>');
+                aiMessageEl.innerHTML = formattedContent;
+                historyEl.scrollTop = historyEl.scrollHeight;
+            });
+            
+            finalResponse = completion.content;
+            
+        } catch (error) {
+            console.error('API Error:', error);
+            finalResponse = `❌ API 调用失败: ${error.message}`;
+            aiMessageEl.innerHTML = finalResponse.replace(/\n/g, '<br>');
+        } finally {
+            // 保存最终 AI 响应到历史记录
+            panelChatHistory[panelId].push({ role: 'ai', content: finalResponse });
+            
+            // 重新启用输入
+            isPanelTyping[panelId] = false;
+            inputEl.disabled = false;
+            sendBtn.disabled = false;
+            inputEl.style.height = 'auto'; 
+        }
+    }
+    
+    function handlePanelChatInput(event, panelId) {
+        const inputEl = document.getElementById(`${panelId}ChatInput`);
+        inputEl.style.height = 'auto';
+        inputEl.style.height = inputEl.scrollHeight + 'px';
+        if (event.key === 'Enter' && !event.shiftKey) {
+            event.preventDefault();
+            sendPanelChatMessage(panelId);
+        }
+    }
+
+    // ========== Calendar AI 逻辑 (启动对话) ==========
+    async function runCalendarAiAnalysis() {
+        const panelId = 'calendar';
+        const { statusEl } = getPanelChatElements(panelId);
+
+        if (!settings.aiEndpoint || !settings.aiApiKey) {
+            resetPanelChat(panelId, '❌ 错误：请在“设置”中配置 AI 服务终端点和 API 密钥。');
+            return;
+        }
+
+        const violations = weekSummaries.filter(w => w.violation);
+        
+        if (violations.length === 0) {
+            const msg = `✅ AI 分析：本月排班完全符合连续7天工时不超过 ${settings.limit} 小时的规定。不需要换班或调整。`;
+            resetPanelChat(panelId, msg);
+            return;
+        }
+        
+        // 构建系统和上下文
+        const violationDetails = violations.map(w => `\n- ${w.start} to ${w.end}: ${w.total.toFixed(2)} 小时 (超限 ${ (w.total - settings.limit).toFixed(2) } 小时)`).join('');
+        const currentMonthShifts = getDetailedShifts(`${selectedMonth}-01`, new Date(selectedMonth.split('-')[0], selectedMonth.split('-')[1], 0).toISOString().split('T')[0]);
+        const shiftDetails = currentMonthShifts.map(s => {
+            if (s.shiftType === 'big') return `${s.date}: 大夜班 (含次日) 总${s.totalHours.toFixed(1)}h`;
+            if (s.shiftType === 'small') return `${s.date}: 小夜班 总${s.totalHours.toFixed(1)}h`;
+            if (s.shiftType === 'custom') return `${s.date}: 自定义班次 总${s.totalHours.toFixed(1)}h`;
+            return null;
+        }).filter(Boolean).join('; ');
+
+        const contextData = `
+            当前分析月份为 ${selectedMonth}。
+            规则限制：连续7天工时不得超过 ${settings.limit} 小时。
+            --- 检测到的违规轮次 ---
+            共发现 ${violations.length} 次超限：${violationDetails}
+            --- 本月排班记录摘要 (仅供参考) ---
+            ${shiftDetails}
+        `;
+
+        panelContexts[panelId].system = `你是一个专业的夜班工时合规改进顾问。你的唯一任务是根据用户提供的**连续7天工时超限记录**和**本月详细排班**，给出具体的、可操作的改进建议，以消除超限风险。规则：连续7天工时不得超过 ${settings.limit} 小时。**你的建议必须是可以操作的换班或调整，例如：将哪一天的大夜班改为小夜班，或删除哪一天的班次，或者将班次往后挪动一天。**`;
+        panelContexts[panelId].data = contextData; 
+
+        // 初始提问
+        const initialPrompt = `请针对发现的超限问题，给出具体的排班改进建议（例如：将哪一天的大夜班改为小夜班，或删除哪一天的班次）。请用中文分点总结，重点放在“如何解决违规”上。`;
+
+        // 重置并启动对话
+        resetPanelChat(panelId);
+        displayPanelMessage(panelId, 'user', `排班合规性分析请求（月份：${selectedMonth}）。数据已提交给 AI。`);
+        sendPanelChatMessage(panelId, initialPrompt);
+    }
+
+    // ========== Stats AI 逻辑 (启动对话) ==========
+    function generateAnalysisData() {
+        if (!currentStatsSummary || Object.keys(currentStatsSummary).length === 0 || !currentStatsSummary.detailedShifts) {
+            return { error: "无数据。请先选择日期范围并点击“分析”。" };
+        }
+        const { dateRange, totalHours, totalWorkDays, avgMonthlyHours, avgDailyHours, bigCount, smallCount, customCount, maxConsecutive, violationCount, totalMonths, detailedShifts } = currentStatsSummary;
+        const conciseShiftLines = detailedShifts.map(s => {
+            let description = '';
+            if (s.shiftType === 'big') description = `大夜班 (本日${s.raw.hours.toFixed(1)}h + 次日${s.raw.nextDayHours.toFixed(1)}h)`;
+            else if (s.shiftType === 'small') description = `小夜班 (${s.raw.hours.toFixed(1)}h)`;
+            else if (s.shiftType === 'custom') description = `自定义班次 (基础${s.raw.hours.toFixed(1)}h)`;
+            else if (s.shiftType === 'auto-next') return null;
+            let extra = s.extraHours !== 0 ? (s.extraHours > 0 ? ` + 额外${s.extraHours.toFixed(2)}h` : ` - 减少${Math.abs(s.extraHours).toFixed(2)}h`) : '';
+            return `${s.date}, ${description}${extra}, 总工时 ${s.totalHours.toFixed(2)}h`;
+        }).filter(line => line !== null);
+        const dataForAI = `排班记录（共${conciseShiftLines.length}条非自动接续班次）：\n` + conciseShiftLines.join('\n');
+        return {
+            dateRange: dateRange,
+            summaryStats: {
+                totalHours, totalWorkDays, avgMonthlyHours, avgDailyHours,
+                shiftCounts: { big: bigCount, small: smallCount, custom: customCount },
+                maxConsecutive: maxConsecutive,
+                violationCount: violationCount,
+                detailedShiftsText: dataForAI
+            }
+        };
+    }
+    
+    async function runAiAnalysis() {
+        const panelId = 'stats';
+
+        if (!settings.aiEndpoint || !settings.aiApiKey) {
+            resetPanelChat(panelId, '❌ 错误：请在“设置”中配置 AI 服务终端点和 API 密钥。');
+            return;
+        }
+        
+        const data = generateAnalysisData();
+        if (data.error) {
+            resetPanelChat(panelId, `❌ 错误：${data.error}`);
+            return;
+        }
+        
+        // 构建系统和上下文
+        const { dateRange, totalHours, totalWorkDays, avgMonthlyHours, avgDailyHours, bigCount, smallCount, customCount, maxConsecutive, violationCount, detailedShiftsText } = data.summaryStats;
+        
+        const contextData = `
+            用户在 ${dateRange} 期间的排班记录和统计摘要：
+            --- 统计摘要 ---
+            - 总工作天数: ${totalWorkDays} 天
+            - 最大连续工作天数: ${maxConsecutive} 天
+            - 大夜班次数: ${bigCount} 次
+            - 小夜班次数: ${smallCount} 次
+            - 平均每月工时: ${avgMonthlyHours} 小时
+            - 连续7天工时超限次数: ${violationCount} 次
+            --- 详细排班数据 ---
+            ${detailedShiftsText}
+        `;
+        
+        panelContexts[panelId].system = `你是一位专业的个人健康与生活规划师。你的任务是基于用户提供的排班记录，分析其工作强度和夜班频率，并提供**人性化的、关怀备至的生活建议**。请**避免**提供用户无法实施的“调整排班”或“修改制度”的建议，重点在于用户可以**自我管理**的部分（如休息时间安排、健康饮食、应对疲劳、社交活动安排等）。`;
+        panelContexts[panelId].data = contextData; 
+
+        // 初始提问
+        const initialPrompt = `请你根据这些信息，提供一份专业的长期健康与生活平衡分析总结。请用中文分点总结：\n1. **工作节奏与强度评估**；\n2. **生活质量风险提示**；\n3. **人性化建议（自我管理）**。`;
+        
+        // 重置并启动对话
+        resetPanelChat(panelId);
+        displayPanelMessage(panelId, 'user', `统计分析摘要请求（范围：${dateRange}）。数据已提交给 AI。`);
+        sendPanelChatMessage(panelId, initialPrompt);
+    }
+
+    // ========== AI 对话逻辑 (Chat 面板) - 保持原有 AIAssistant 逻辑不变 ==========
+
+    class AIAssistant {
+        static history = [];
+        static isTyping = false;
+        static historyEl = document.getElementById('chatHistory');
+        static chatInputEl = document.getElementById('chatInput');
+        static systemMessage = {};
+
+        static initSystemMessage() {
+            this.systemMessage = { 
+                role: 'system', 
+                content: `你是一位专业且充满人情味的私人健康助手。你的任务是基于用户提供的排班、工时数据，回答关于夜班工作下的健康、情绪和生活质量的通用问题。请以亲切、关怀的口吻回答，并提供**积极且实用的个人生活建议**（如睡眠优化、饮食、运动、心理调适等）。请**避免**给出关于“调整制度”或“修改排班”的建议，因为用户无法决定这些。当前参考的合规规则（连续7天工时限制）为 ${settings.limit} 小时。请尽量用中文回答。`
+            };
+            this.history = [this.systemMessage];
+        }
+
+        static updateChatConfigStatus() {
+            const statusEl = document.getElementById('chatConfigStatus');
+            if (settings.aiEndpoint && settings.aiApiKey && settings.aiModel) {
+                statusEl.textContent = ` (配置模型: ${settings.aiModel}，状态: ✅ 可用)`;
+                statusEl.style.color = '#52c41a';
+            } else {
+                statusEl.textContent = ` (配置状态: ❌ 请在“设置”中配置 AI 密钥)`;
+                statusEl.style.color = '#ff4d4f';
+            }
+        }
+
+        static displayMessage(role, content, save = true) {
+            const msgDiv = document.createElement('div');
+            msgDiv.className = 'chat-message ' + (role === 'user' ? 'chat-user' : 'chat-ai');
+            const formattedContent = content.replace(/```(.*?)\n([\s\S]*?)```/gs, (match, lang, code) => { return `<pre><code>${code.trim()}</code></pre>`; }).replace(/\n/g, '<br>');
+            msgDiv.innerHTML = formattedContent; 
+            AIAssistant.historyEl.appendChild(msgDiv);
+            AIAssistant.historyEl.scrollTop = AIAssistant.historyEl.scrollHeight;
+            if (save && role !== 'system') { AIAssistant.history.push({ role, content }); }
+        }
+
+        static async sendMessage(userMessage) {
+            if (!userMessage.trim() || AIAssistant.isTyping) return;
+            const endpoint = settings.aiEndpoint;
+            const apiKey = settings.aiApiKey;
+            const model = settings.aiModel;
+            if (!endpoint || !apiKey) { AIAssistant.displayMessage('ai', '❌ 错误：请先在“设置”中配置 AI 服务终端点和 API 密钥。', false); return; }
+
+            AIAssistant.displayMessage('user', userMessage);
+            AIAssistant.isTyping = true;
+            document.getElementById('chatSendBtn').disabled = true;
+            document.getElementById('chatInput').disabled = true;
+
+            const messagesToSend = [...AIAssistant.history];
+            messagesToSend.push({ role: 'user', content: userMessage });
+            AIAssistant.displayMessage('ai', '', false);
+            const aiMessageEl = AIAssistant.historyEl.lastElementChild;
+            let finalResponse = '';
+            let accumulatedText = '';
+            try {
+                const completion = await runChatCompletion(messagesToSend, endpoint, apiKey, model, true, (chunk) => {
+                    accumulatedText += chunk;
+                    const formattedContent = accumulatedText.replace(/```(.*?)\n([\s\S]*?)```/gs, (match, lang, code) => { return `<pre><code>${code.trim()}</code></pre>`; }).replace(/\n/g, '<br>');
+                    aiMessageEl.innerHTML = formattedContent; 
+                    AIAssistant.historyEl.scrollTop = AIAssistant.historyEl.scrollHeight;
+                });
+                finalResponse = completion.content;
+            } catch (error) {
+                console.error('API Error:', error);
+                finalResponse = `❌ API 调用失败: ${error.message}`;
+                aiMessageEl.innerHTML = finalResponse.replace(/\n/g, '<br>');
+            } finally {
+                AIAssistant.history.push({ role: 'ai', content: finalResponse });
+                AIAssistant.isTyping = false;
+                document.getElementById('chatInput').disabled = false;
+                document.getElementById('chatSendBtn').disabled = false;
+                AIAssistant.chatInputEl.value = '';
+                AIAssistant.chatInputEl.style.height = 'auto';
+            }
+        }
+
+        static async analyzeShiftData() {
+            if (AIAssistant.isTyping) return;
+            const startInput = document.getElementById('chatStartDate').value;
+            const endInput = document.getElementById('chatEndDate').value;
+            if (!startInput || !endInput) { AIAssistant.displayMessage('ai', '❌ 请先在日期输入框中选择有效的分析日期范围。', false); return; }
+            const detailedShifts = getDetailedShifts(startInput, endInput);
+            if (detailedShifts.length === 0) { AIAssistant.displayMessage('ai', `⚠️ 在 ${startInput} 至 ${endInput} 范围内未找到任何排班记录。请检查您选择的日期。`, false); return; }
+            
+            const conciseShiftLines = detailedShifts.map(s => {
+                let description = '';
+                if (s.shiftType === 'big') description = `大夜班 (本日${s.raw.hours.toFixed(1)}h + 次日${s.raw.nextDayHours.toFixed(1)}h)`;
+                else if (s.shiftType === 'small') description = `小夜班 (${s.raw.hours.toFixed(1)}h)`;
+                else if (s.shiftType === 'custom') description = `自定义班次 (基础${s.raw.hours.toFixed(1)}h)`;
+                else if (s.shiftType === 'auto-next') return null;
+                let extra = s.extraHours !== 0 ? (s.extraHours > 0 ? ` + 额外${s.extraHours.toFixed(2)}h` : ` - 减少${Math.abs(s.extraHours).toFixed(2)}h`) : '';
+                return `${s.date}, ${description}${extra}, 总共 ${s.totalHours.toFixed(2)}h`;
+            }).filter(line => line !== null);
+            const dataForAI = `排班记录（共${conciseShiftLines.length}条非自动接续班次）：\n` + conciseShiftLines.join('\n');
+            const prompt = `
+                用户请求分析以下 ${startInput} 至 ${endInput} 期间的排班记录。请注意，用户是无法决定排班制度的个人用户，因此请将分析重点放在**排班对个人健康、情绪和生活质量的潜在影响**上，并给出**可以自我管理的实用建议**。请避免使用制度性或强制性的语言。
+                --- 排班记录 ---
+                ${dataForAI}
+                请你根据这些详细数据，对这段时间的排班进行总结。重点分析连续工作天数过多、夜班密度过高等风险因素，并给出亲切、实用的生活建议。
+            `;
+            AIAssistant.sendMessage(prompt);
+        }
+    }
+
+    function handleChatInput(event) {
+        AIAssistant.chatInputEl.style.height = 'auto';
+        AIAssistant.chatInputEl.style.height = AIAssistant.chatInputEl.scrollHeight + 'px';
+        if (event.key === 'Enter' && !event.shiftKey) {
+            event.preventDefault();
+            sendChatMessage();
+        }
+    }
+
+    function sendChatMessage() {
+        const message = AIAssistant.chatInputEl.value;
+        AIAssistant.sendMessage(message);
+    }
+    
+    function resetChatHistory() {
+        if (AIAssistant.isTyping) { alert('AI 正在回复中，请稍候再重置。'); return; }
+        if (confirm('确定清空所有对话记录吗？')) {
+            AIAssistant.historyEl.innerHTML = '';
+            AIAssistant.initSystemMessage();
+            AIAssistant.displayMessage('ai', '对话记录已清空。我是您的私人健康助手，请问有什么可以帮您的？', false);
+        }
+    }
+
+    function initDateRangeForStats(autoRun = false) {
+        const today = new Date();
+        const statStartDateEl = document.getElementById('statStartDate');
+        const statEndDateEl = document.getElementById('statEndDate');
+
+        // 只有当输入框为空时才设置默认值
+        if (!statStartDateEl.value) {
+             statStartDateEl.value = new Date(today.getFullYear(), today.getMonth(), 1).toLocaleDateString('en-CA');
+        }
+        if (!statEndDateEl.value) {
+            statEndDateEl.value = today.toLocaleDateString('en-CA');
+        }
+
+        if (autoRun) renderStatsWithRange();
+    }
+
+    function initDateRangeForChat() {
+        const today = new Date();
+        document.getElementById('chatStartDate').value = new Date(today.getFullYear(), today.getMonth(), 1).toLocaleDateString('en-CA');
+        document.getElementById('chatEndDate').value = today.toLocaleDateString('en-CA');
+    }
+
     window.onload = async () => {
-      await loadFromCloud();
-      
+      loadFromLocal();
+      if (!selectedMonth) selectedMonth = new Date().toISOString().slice(0, 7);
       document.getElementById('monthInput').value = selectedMonth;
-      loadSettingsUI();
-      renderCalendar();
+
+      currentView = settings.defaultView || 'week';
+      if (currentView === 'cycle') {
+          document.getElementById('btn-week').classList.remove('active');
+          document.getElementById('btn-cycle').classList.add('active');
+      } else {
+          document.getElementById('btn-cycle').classList.remove('active');
+          document.getElementById('btn-week').classList.add('active');
+      }
+
+      AIAssistant.initSystemMessage();
+      AIAssistant.updateChatConfigStatus();
+      initDateRangeForStats(true); // 初始加载时自动运行统计
+      initDateRangeForChat();
       
-      // 优化实时订阅：避免循环更新
+      // 初始化面板对话状态提示
+      resetPanelChat('calendar', '点击 "分析并提供换班建议" 启动对话。');
+      resetPanelChat('stats', '请先选择日期范围并点击“分析”，然后点击 "启动 AI 总结" 启动对话。');
+      
+      await loadFromCloud();
+      renderCalendar();
+      const defaultTab = document.querySelector('.nav-tabs button.active')?.id.replace('tab-', '') || 'calendar';
+      switchTab(defaultTab);
+      
       if (supabase) {
         const userId = getUserId();
-        
         let lastSyncTimestamp = 0;
         supabase
           .channel('shifts-channel')
           .on('postgres_changes', { event: '*', schema: 'public', table: 'shifts', filter: `user_id=eq.${userId}` }, async (payload) => {
-            // 防止循环触发：检查时间戳
             const now = Date.now();
-            if (now - lastSyncTimestamp < 2000) return; // 2秒内不重复同步
+            if (now - lastSyncTimestamp < 2000) return;
             lastSyncTimestamp = now;
-            
             console.log('收到云端班次更新', payload.eventType);
             await loadFromCloud();
             renderCalendar();
@@ -1160,27 +1604,20 @@
             const now = Date.now();
             if (now - lastSyncTimestamp < 2000) return;
             lastSyncTimestamp = now;
-            
             console.log('收到云端设置更新', payload.eventType);
             await loadFromCloud();
             loadSettingsUI();
           })
-          .subscribe((status) => {
-            console.log('实时订阅状态:', status);
-          });
+          .subscribe((status) => { console.log('实时订阅状态:', status); });
       }
     };
 
-    window.onclick = (e) => {
-      if (e.target.id === 'extraModal') closeExtraModal();
+    window.onclick = (e) => { 
+        if (e.target.id === 'extraModal') closeExtraModal(); 
+        if (e.target.id === 'contextMenu') document.getElementById('contextMenu').style.display = 'none';
     };
-
-    // 页面激活时同步（带延迟）
-    document.addEventListener('visibilitychange', () => {
-      if (!document.hidden && supabase) {
-        setTimeout(() => forceSync(), 500); // 延迟500ms避免频繁触发
-      }
-    });
+    
+    AIAssistant.displayMessage('ai', '您好！我是您的私人健康助手，很高兴为您服务。\n\n请切换到 **日历** 或 **统计分析** 页面，点击相应的 "启动对话" 按钮，开始针对性的排班分析和讨论！', false);
   </script>
 </body>
 </html>
