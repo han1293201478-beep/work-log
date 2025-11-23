@@ -304,22 +304,7 @@ margin-top:20px;">
     const SUPABASE_URL = 'https://morkovixfwdsaknmwavj.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1vcmtvdml4Zndkc2Frbm13YXZqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM3MzM1NDIsImV4cCI6MjA3OTMwOTU0Mn0.wh-UEaQyr3bpJBQkCrzJpRR5v4NvRpx3LsnsAo-DGqE';
 
-    // ============ 核心改进：日期格式化工具 (修复时区平移问题) ============
-    /**
-     * 将 Date 对象转换为 YYYY-MM-DD 格式的本地日期字符串。
-     * 解决 new Date().toISOString() 导致的跨时区日期偏移问题。
-     * @param {Date} date 
-     * @returns {string} 
-     */
-    function dateToYYYYMMDD(date) {
-        const year = date.getFullYear();
-        // getMonth() 返回 0-11，需要 +1
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
-        return `${year}-${month}-${day}`;
-    }
-
-
+    // ============ 核心改进：同步管理器 ============
     let isInitialLoadComplete = false; // 首次加载/读取云端数据是否完成的标志
 
     class SyncManager {
@@ -420,7 +405,6 @@ document.getElementById('userIdDisplay').textContent = getUserId().substring(0, 
                 // 1. 确定当前月份的范围
                 const [year, month] = selectedMonth.split('-').map(Number);
                 const startOfMonth = `${selectedMonth}-01`;
-                // 使用 new Date(year, month, 0) 来获取当月最后一天
                 const endOfMonth = new Date(year, month, 0).toISOString().split('T')[0]; 
 
                 // 2. 筛选出当前月份需要上传的 shifts
@@ -698,14 +682,12 @@ saveToStorageSafe({ mode: 'auto' }); // 触发同步
 
     function getDetailedShifts(startDateStr, endDateStr) {
         const detailedShifts = [];
-        // 修复：确保日期对象以本地中午时间创建，避免时区偏移
-        const startDate = new Date(startDateStr + 'T12:00:00');
-        const endDate = new Date(endDateStr + 'T12:00:00');
+        const startDate = new Date(startDateStr);
+        const endDate = new Date(endDateStr);
         let currentDate = new Date(startDate);
         
         while (currentDate <= endDate) {
-            // 修复：使用本地格式化函数
-            const dateStr = dateToYYYYMMDD(currentDate);
+            const dateStr = currentDate.toISOString().split('T')[0];
             const shiftData = shifts[dateStr];
             let baseHours = 0;
             let extraHours = 0;
@@ -727,7 +709,6 @@ saveToStorageSafe({ mode: 'auto' }); // 触发同步
                     raw: shiftData
                 });
             }
-            // 确保日期递增不触发时区跳变
             currentDate.setDate(currentDate.getDate() + 1);
         }
         return detailedShifts;
@@ -834,12 +815,8 @@ saveToStorageSafe({ mode: 'auto' }); // 触发同步
       
       let pressTimer;
       for (let i = 1; i <= daysInMonth; i++) {
-        // 创建日期对象（本地时间 00:00:00）
         const date = new Date(year, month, i);
-        
-        // 修复：使用 dateToYYYYMMDD 获取本地日期字符串
-        const dateStr = dateToYYYYMMDD(date);
-        
+        const dateStr = date.toISOString().split('T')[0];
         const cell = document.createElement('div');
         cell.className = 'day-cell';
         cell.dataset.date = dateStr;
@@ -995,19 +972,15 @@ saveToStorageSafe({ mode: 'auto' }); // 触发同步
         if (shift.type === 'big') {
             const nextDay = new Date(dateStr);
             nextDay.setDate(nextDay.getDate() + 1);
-            // 修复：使用 dateToYYYYMMDD 获取本地日期字符串
-            const nextDayStr = dateToYYYYMMDD(nextDay);
+            const nextDayStr = nextDay.toISOString().split('T')[0];
             if (shifts[nextDayStr]?.type === 'auto-next') delete shifts[nextDayStr];
         }
 
         if (type === 'big') {
           shifts[dateStr] = { type: 'big', hours: settings.bigMain, extra: shift.extra || 0 };
-          
-          // 确保基于正确的本地日期进行计算
           const nextDay = new Date(dateStr);
           nextDay.setDate(nextDay.getDate() + 1);
-          // 修复：使用 dateToYYYYMMDD 获取本地日期字符串
-          const nextDayStr = dateToYYYYMMDD(nextDay);
+          const nextDayStr = nextDay.toISOString().split('T')[0];
           shifts[nextDayStr] = { type: 'auto-next', hours: settings.bigNext, extra: 0 };
         } else if (type === 'small') {
           shifts[dateStr] = { type: 'small', hours: settings.small, extra: shift.extra || 0 };
@@ -1033,8 +1006,7 @@ saveToStorageSafe({ mode: 'auto' }); // 触发同步
         if (shifts[dateStr]?.type === 'big') {
             const nextDay = new Date(dateStr);
             nextDay.setDate(nextDay.getDate() + 1);
-            // 修复：使用 dateToYYYYMMDD 获取本地日期字符串
-            const nextDayStr = dateToYYYYMMDD(nextDay);
+            const nextDayStr = nextDay.toISOString().split('T')[0];
             if (shifts[nextDayStr]?.type === 'auto-next') {
               delete shifts[nextDayStr];
             }
@@ -1059,8 +1031,7 @@ saveToStorageSafe({ mode: 'auto' }); // 触发同步
       if (shifts[rightClickedDate]?.type === 'big') {
           const nextDay = new Date(rightClickedDate);
           nextDay.setDate(nextDay.getDate() + 1);
-          // 修复：使用 dateToYYYYMMDD 获取本地日期字符串
-          const nextDayStr = dateToYYYYMMDD(nextDay);
+          const nextDayStr = nextDay.toISOString().split('T')[0];
           if (shifts[nextDayStr]?.type === 'auto-next') {
             delete shifts[nextDayStr];
           }
@@ -1126,24 +1097,19 @@ saveToStorageSafe({ mode: 'auto' }); // 触发同步
     function generateAllRelevant7DayWindows() {
       const windows = [];
       const [year, month] = selectedMonth.split('-').map(Number);
-      // 修复：使用带 T12:00:00 的日期字符串创建，避免时区偏移
-      const firstDayOfMonth = new Date(`${year}-${String(month).padStart(2, '0')}-01T12:00:00`);
-      const lastDayOfMonth = new Date(year, month, 0); // 这个是安全的，因为是月份的最后一天
-
+      const firstDayOfMonth = new Date(year, month - 1, 1);
+      const lastDayOfMonth = new Date(year, month, 0);
+      
       const start = new Date(firstDayOfMonth);
       start.setDate(start.getDate() - 6);
       const end = lastDayOfMonth;
       
       let current = new Date(start);
-      // 修复：使用 T12:00:00 确保日期对象的创建不会偏移
-      current.setHours(12, 0, 0, 0); 
-      
       while (current <= end) {
         const windowEnd = new Date(current);
         windowEnd.setDate(windowEnd.getDate() + 6); // 7th day is windowEnd
         
         if (windowEnd >= firstDayOfMonth) {
-            // 修复：使用 dateToYYYYMMDD 格式化日期
             windows.push({ start: new Date(current), end: windowEnd });
         }
         current.setDate(current.getDate() + 1);
@@ -1163,15 +1129,14 @@ saveToStorageSafe({ mode: 'auto' }); // 触发同步
         for (let i = 0; i < 7; i++) {
           const d = new Date(w.start);
           d.setDate(d.getDate() + i);
-          // 修复：使用 dateToYYYYMMDD 格式化日期
-          const iso = dateToYYYYMMDD(d);
+          const iso = d.toISOString().split('T')[0];
           datesInRange.push(iso);
           total += getDailyHours(iso);
         }
         const violation = total > limit;
         weekSummaries.push({
-          start: dateToYYYYMMDD(w.start), // 修复：使用 dateToYYYYMMDD 格式化日期
-          end: dateToYYYYMMDD(w.end), // 修复：使用 dateToYYYYMMDD 格式化日期
+          start: w.start.toISOString().split('T')[0],
+          end: w.end.toISOString().split('T')[0],
           total: total,
           dates: datesInRange,
           violation: violation
@@ -1323,9 +1288,11 @@ saveToStorageSafe({ mode: 'auto' }); // 触发同步
         const endInput = document.getElementById('statEndDate').value;
         if (!startInput || !endInput) return { error: '请选择有效的日期范围' };
 
-        // 修复：确保日期对象以本地中午时间创建，避免时区偏移
-        const startDate = new Date(startInput + 'T12:00:00');
-        const endDate = new Date(endInput + 'T12:00:00');
+        const [sYear, sMonth, sDay] = startInput.split('-').map(Number);
+        const [eYear, eMonth, eDay] = endInput.split('-').map(Number);
+        const startDate = new Date(sYear, sMonth - 1, sDay);
+        const endDate = new Date(eYear, eMonth - 1, eDay);
+        endDate.setHours(23, 59, 59, 999);
 
         if (startDate > endDate) return { error: '开始日期不能晚于结束日期' };
 
@@ -1360,7 +1327,7 @@ saveToStorageSafe({ mode: 'auto' }); // 触发同步
                 const dayBefore = new Date(workedDates[i - 1]);
                 dayBefore.setDate(dayBefore.getDate() + 1);
                 const currentDay = new Date(workedDates[i]);
-                if (dateToYYYYMMDD(dayBefore) === dateToYYYYMMDD(currentDay)) { // 修复：使用 dateToYYYYMMDD 比较
+                if (dayBefore.toISOString().split('T')[0] === currentDay.toISOString().split('T')[0]) {
                     currentConsecutive++;
                 } else {
                     currentConsecutive = 1;
@@ -1370,19 +1337,13 @@ saveToStorageSafe({ mode: 'auto' }); // 触发同步
         }
 
         let complianceViolations = 0;
-        // 使用本地日期计算总天数
-        const totalDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+        const totalDays = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
         for (let i = 0; i <= totalDays - 7; i++) {
             let weekTotal = 0;
-            const d = new Date(startDate);
-            d.setDate(d.getDate() + i);
-            d.setHours(12, 0, 0, 0); // 确保日期对象在中午，避免时区跳变
-
             for (let j = 0; j < 7; j++) {
-                const weekDate = new Date(d);
-                weekDate.setDate(weekDate.getDate() + j);
-                // 修复：使用 dateToYYYYMMDD 格式化日期
-                weekTotal += getDailyHours(dateToYYYYMMDD(weekDate));
+                const d = new Date(startDate);
+                d.setDate(d.getDate() + i + j);
+                weekTotal += getDailyHours(d.toISOString().split('T')[0]);
             }
             if (weekTotal > settings.limit) complianceViolations++;
         }
@@ -1695,7 +1656,7 @@ saveToStorageSafe({ mode: 'auto' }); // 触发同步
       if (isPanelTyping[panelId]) return;
 
       if (!settings.aiEndpoint || !settings.aiApiKey) {
-        displayPanelMessage(panelId, 'ai', '❌ 错误：请在“设置”中配置 AI 服务终端点和 API 密钥。', false);
+        displayPanelMessage(panelId, 'assistant', '❌ 错误：请在“设置”中配置 AI 服务终端点和 API 密钥。', false);
         return;
       }
       
@@ -1751,7 +1712,7 @@ saveToStorageSafe({ mode: 'auto' }); // 触发同步
              })
              .replace(/\n/g, '<br>');
 
-        panelChatHistory[panelId].push({ role: 'ai', content: fullResponse });
+        panelChatHistory[panelId].push({ role: 'assistant', content: fullResponse });
 
       } catch (error) {
         console.error('API Error:', error);
@@ -1793,7 +1754,7 @@ saveToStorageSafe({ mode: 'auto' }); // 触发同步
 
       // 构建系统和上下文
       const violationDetails = violations.map(w => `\n- ${w.start} to ${w.end}: ${w.total.toFixed(2)} 小时 (超限 ${ (w.total - settings.limit).toFixed(2) } 小时)`).join('');
-      const currentMonthShifts = getDetailedShifts(`${selectedMonth}-01`, dateToYYYYMMDD(new Date(selectedMonth.split('-')[0], selectedMonth.split('-')[1], 0)));
+      const currentMonthShifts = getDetailedShifts(`${selectedMonth}-01`, new Date(selectedMonth.split('-')[0], selectedMonth.split('-')[1], 0).toISOString().split('T')[0]);
       const shiftDetails = currentMonthShifts.map(s => {
           if (s.shiftType === 'big') return `${s.date}: 大夜班 (含次日) 总${s.totalHours.toFixed(1)}h`;
           if (s.shiftType === 'small') return `${s.date}: 小夜班 总${s.totalHours.toFixed(1)}h`;
@@ -1995,10 +1956,10 @@ saveToStorageSafe({ mode: 'auto' }); // 触发同步
         }
         
         if (!isError) {
-             this.history.push({ role: 'ai', content: finalResponse });
+             this.history.push({ role: 'assistant', content: finalResponse });
         } else {
              // If error, store the error message in history but not for context
-             this.history.push({ role: 'ai', content: finalResponse }); 
+             this.history.push({ role: 'assistant', content: finalResponse }); 
         }
         
         this.isTyping = false;
@@ -2014,14 +1975,14 @@ saveToStorageSafe({ mode: 'auto' }); // 触发同步
         const endInput = document.getElementById('chatEndDate').value;
         
         if (!startInput || !endInput) {
-          AIAssistant.displayMessage('ai', '❌ 请先在日期输入框中选择有效的分析日期范围。', false);
+          AIAssistant.displayMessage('assistant', '❌ 请先在日期输入框中选择有效的分析日期范围。', false);
           return;
         }
 
         const detailedShifts = getDetailedShifts(startInput, endInput);
 
         if (detailedShifts.length === 0) {
-          AIAssistant.displayMessage('ai', `⚠️ 在 ${startInput} 至 ${endInput} 范围内未找到任何排班记录。请检查您选择的日期。`, false);
+          AIAssistant.displayMessage('assistant', `⚠️ 在 ${startInput} 至 ${endInput} 范围内未找到任何排班记录。请检查您选择的日期。`, false);
           return;
         }
 
@@ -2041,7 +2002,7 @@ ${conciseShiftLines}`;
         
         AIAssistant.history = []; // 清空用户/AI历史记录
 
-        AIAssistant.displayMessage('ai', `✅ 已成功载入 ${startInput} 至 ${endInput} 期间的排班数据 (${detailedShifts.length} 条记录)。请随时提问！`, false);
+        AIAssistant.displayMessage('assistant', `✅ 已成功载入 ${startInput} 至 ${endInput} 期间的排班数据 (${detailedShifts.length} 条记录)。请随时提问！`, false);
         
         const starterPrompt = `请根据我载入的排班数据，总结我的夜班频率和工作强度，并为我提供一份关于如何调整作息和饮食的建议。`;
         AIAssistant.sendMessage(starterPrompt);
@@ -2063,7 +2024,7 @@ ${conciseShiftLines}`;
              AIAssistant.contextData = ''; // 清除上下文数据
              AIAssistant.initSystemMessage();
              AIAssistant.historyEl.innerHTML = '';
-             AIAssistant.displayMessage('ai', '对话已重置。您可以重新选择日期范围并点击“获取并分析排班对健康的影响”，或直接提问。', false);
+             AIAssistant.displayMessage('assistant', '对话已重置。您可以重新选择日期范围并点击“获取并分析排班对健康的影响”，或直接提问。', false);
         }
     }
 
