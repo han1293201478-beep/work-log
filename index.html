@@ -3,6 +3,2062 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>夜班工时合规检查器（AI 对话增强版）</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    body { font-family: "Microsoft YaHei", sans-serif;
+padding: 20px; background-color: #f9f9f9; }
+    .container { max-width: 1000px; margin: 0 auto; background: white; padding: 20px;
+border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+    h1, h2, h3 { color: #333;
+}
+    h1 { text-align: center; }
+    
+    /* === 居中样式修改 === */
+    .nav-tabs { 
+        text-align: center; 
+        margin-bottom: 20px; 
+    }
+    .month-picker, 
+    .import-export, 
+    .view-toggle {
+        text-align: center;
+        margin-top: 15px; 
+        margin-bottom: 15px; 
+    }
+
+    .nav-tabs button { margin: 0 6px;
+padding: 6px 12px; border: 1px solid #ccc; background: #f5f5f5; cursor: pointer; border-radius: 4px;
+}
+    .nav-tabs button.active { background: #1890ff; color: white; border-color: #1890ff;
+}
+    .calendar { display: grid; gap: 4px; margin-top: 10px; }
+    .day-header { text-align: center;
+font-weight: bold; padding: 6px; background: #eee; border-radius: 4px; font-size: 14px; }
+    .day-cell { height: 80px; display: flex;
+flex-direction: column; align-items: center; justify-content: center; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; background: #fff; font-size: 14px; user-select: none;
+position: relative; padding: 4px; text-align: center; }
+    .day-number { font-weight: bold;
+}
+    .day-hours { font-size: 12px; color: #666; margin-top: 2px; }
+    .day-extra { font-size: 11px;
+color: #999; }
+    .day-total { font-size: 11px; color: #d46b08; font-weight: bold; margin-top: 2px;
+}
+    .day-cell.over-limit { box-shadow: 0 0 0 3px red;
+}
+    .day-cell.multi-selected { outline: 2px solid blue; z-index: 2;
+}
+    .controls button { margin: 5px; padding: 8px 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;
+}
+    .btn-sync { background: #52c41a; color: white; }
+    .shift-info { margin-top: 20px; padding: 15px;
+background: #f0f9ff; border-radius: 6px; }
+    .result { margin-top: 10px; padding: 8px; border-radius: 4px; font-weight: bold;
+}
+    .ok { background: #f6ffed; color: #52c41a; }
+    .warn { background: #fff2f0; color: #ff4d4f;
+}
+    .week-summary { margin-top: 20px; }
+    .week-list { max-height: 300px; overflow-y: auto;
+border: 1px solid #eee; border-radius: 6px; padding: 10px; background: #fafafa; }
+    .week-item { padding: 6px 0;
+border-bottom: 1px solid #f0f0f0; font-size: 14px; }
+    .week-item.violation { background: #fff2f0; color: #ff4d4f; font-weight: bold;
+}
+    
+    /* ... (其他 CSS 样式保持不变) ... */
+    .day-cell:hover { background: #e6f7ff; }
+    .day-cell.selected-big { background: #ffe58f; border-color: #faad14; }
+    .day-cell.selected-small { background: #b7eb8f; border-color: #52c41a; }
+    .day-cell.custom { background: #ffd6e7; border-color: #eb2f96; }
+    .btn-big { background: #faad14; color: white; }
+    .btn-small { background: #52c41a; color: white; }
+    .btn-clear { background: #d9d9d9; color: black; }
+    .btn-delete { background: #ff4d4f; color: white; }
+    .btn-extra { background: #722ed1; color: white; }
+    .btn-settings { background: #13c2c2; color: white; }
+    
+    .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 3000; justify-content: center; align-items: center; }
+    .modal-content { background: white; padding: 20px; border-radius: 8px; width: 320px; text-align: left; }
+    .modal h3 { text-align: center; margin-top: 0; }
+    .modal input, .modal select { width: 100%; padding: 8px; margin: 10px 0; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+    .modal-buttons { text-align: center; margin-top: 15px; }
+    .modal-buttons button { margin: 0 8px; }
+    #importFileInput { display: none; }
+    .panel { display: none; }
+    .panel.active { display: block; }
+    .settings-grid, .stats-controls, .stats-grid { display: grid; gap: 15px; margin-top: 15px; }
+    .settings-grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+    .setting-item, .stat-item { padding: 12px; background: #fafafa; border-radius: 6px; border: 1px solid #eee; }
+    .setting-item label { display: block; margin-bottom: 6px; font-weight: bold; font-size: 14px; }
+    .setting-item input, .setting-item select { width: 100%; padding: 6px; border: 1px solid #ccc; border-radius: 4px; }
+    .stat-value { font-size: 20px; font-weight: bold; color: #1890ff; margin-top: 6px; }
+    .stats-controls, .chat-controls { display: grid; gap: 15px; margin-top: 15px; grid-template-columns: 1fr 1fr auto; align-items: end; }
+    .stats-controls > div, .chat-controls > div { display: flex; flex-direction: column; }
+    .stats-controls label, .chat-controls label { font-size: 14px; margin-bottom: 4px; }
+    .stats-controls input[type="date"], .chat-controls input[type="date"] { padding: 6px; border: 1px solid #ccc; border-radius: 4px; }
+    .stats-controls button, .chat-controls button { height: 34px; margin-top: 22px; }
+    #chartContainer { margin-top: 20px; position: relative; height: 300px; }
+    .selection-mode-indicator { background: #1890ff; color: white; padding: 6px 12px; border-radius: 4px; font-size: 14px; display: inline-block; }
+    .sync-status { display: inline-flex; align-items: center; gap: 8px; padding: 4px 10px; border-radius: 4px; font-size: 14px; margin-left: 10px; transition: all 0.3s ease; }
+    .sync-status.synced { background: #f6ffed; color: #52c41a; }
+    .sync-status.syncing { background: #e6f7ff; color: #1890ff; animation: pulse 1.5s infinite; }
+    .sync-status.error { background: #fff2f0; color: #ff4d4f; }
+    .sync-status.warning { background: #fff7e6; color: #d46b08; }
+    @keyframes pulse { 0%, 100% { opacity: 0.8; } 50% { opacity: 1; } }
+    
+    /* 修复 AI Chat 布局: 确保聊天记录垂直堆叠 */
+    #chatContainer { display: flex; flex-direction: column; height: 600px; border: 1px solid #ddd; border-radius: 8px; overflow: hidden; margin-top: 15px; }
+    .ai-chat-history { 
+        flex-grow: 1; 
+        overflow-y: auto; 
+        padding: 15px; 
+        background-color: #f7f7f7; 
+        border: 1px solid #ddd; 
+        border-radius: 8px 8px 0 0; 
+        min-height: 200px; 
+        max-height: 400px; 
+        margin-top: 10px; 
+        display: none; /* 默认隐藏 */
+    }
+    .ai-chat-history.visible {
+        display: flex; /* 变为可见时使用 Flex */
+        flex-direction: column; /* 关键：垂直堆叠消息 */
+    }
+
+    #chatHistory { flex-grow: 1; overflow-y: auto; padding: 15px; background-color: #f7f7f7; }
+    .chat-message { padding: 10px 15px; margin-bottom: 10px; border-radius: 18px; max-width: 90%; line-height: 1.6; }
+    .chat-user { align-self: flex-end; margin-left: auto; background-color: #1890ff; color: white; border-bottom-right-radius: 2px; }
+    .chat-ai { align-self: flex-start; margin-right: auto; background-color: #e6e6e6; color: #333; border-bottom-left-radius: 2px; }
+    .chat-ai pre { white-space: pre-wrap; background: #fff; padding: 10px; border-radius: 4px; border: 1px dashed #ccc; font-size: 12px; margin-top: 5px; overflow-x: auto; }
+    .ai-chat-input-container { padding: 10px 15px; background-color: white; border: 1px solid #ddd; border-top: none; border-radius: 0 0 8px 8px; display: flex; gap: 10px; }
+    .ai-chat-input-container textarea { flex-grow: 1; padding: 8px; border: 1px solid #ccc; border-radius: 12px; resize: none; max-height: 80px; line-height: 1.4; }
+    .ai-chat-input-container button { background-color: #52c41a; color: white; border: none; padding: 8px 15px; border-radius: 12px; cursor: pointer; font-weight: bold; }
+    #chatInputContainer { padding: 15px; background-color: white; border-top: 1px solid #ddd; display: flex; }
+    #chatInput { flex-grow: 1; padding: 10px; border: 1px solid #ccc; border-radius: 20px; margin-right: 10px; resize: none; }
+    #chatSendBtn { background-color: #52c41a; color: white; border: none; padding: 10px 20px; border-radius: 20px; cursor: pointer; font-weight: bold; }
+    #chatSendBtn:disabled { background-color: #ccc; cursor: not-allowed; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>
+      夜班工时合规检查器（AI 对话增强版）
+      <span id="syncStatus" class="sync-status synced">✓ 已同步</span>
+    </h1>
+
+    <div class="nav-tabs">
+      <button id="tab-calendar" class="active" onclick="switchTab('calendar')">日历</button>
+      <button id="tab-stats" onclick="switchTab('stats')">📊 统计分析</button>
+      <button id="tab-chat" onclick="switchTab('chat')">💬 AI 对话</button>
+      <button id="tab-settings" onclick="switchTab('settings')">⚙️ 设置</button>
+    </div>
+
+    <div id="panel-calendar" class="panel active">
+      <div class="month-picker">
+        <label>选择月份：</label>
+        <input type="month" id="monthInput" />
+        <button onclick="renderCalendar()">确定</button>
+        <button class="btn-settings" onclick="forceLoad()">📥 从云端加载</button>
+        <button class="btn-sync" onclick="forceUpload()">📤 立即上传</button>
+      </div>
+
+      <div class="import-export">
+        <button onclick="exportData()">📤 导出备份（JSON）</button>
+        <button onclick="document.getElementById('importFileInput').click()">📥 手动导入</button>
+        <input type="file" id="importFileInput" accept=".json" onchange="importData(event)" />
+        <p style="font-size:12px;color:#666;margin-top:6px;">
+          ☁️ 数据自动云端同步 |
+✓ 离线可用 | ID: <span id="userIdDisplay"></span>
+        </p>
+      </div>
+
+      <div class="view-toggle">
+        <button id="btn-week" class="active" onclick="switchView('week')">标准周历（7天/周）</button>
+        <button id="btn-cycle" onclick="switchView('cycle')">6天循环历</button>
+      </div>
+
+      <div class="controls">
+        <p id="multiSelectHint">• PC端：按住 **Ctrl/Cmd** 键点击日期进入/退出多选模式；手机端：**长按** 任意日期触发多选 → 点击切换选中｜<strong>右键</strong> 单个日期 → 删除</p>
+        <div id="selectionModeIndicator" class="selection-mode-indicator" style="display: none;">多选模式（点击日期切换选中）</div>
+        <button class="btn-big" onclick="applyShiftToSelected('big')">设为大夜班</button>
+        <button class="btn-small" onclick="applyShiftToSelected('small')">设为小夜班</button>
+        <button class="btn-delete" onclick="deleteSelected()">删除所选</button>
+        <button class="btn-extra" onclick="openExtraModal()">额外调整</button>
+        <button class="btn-clear" onclick="clearSelected()">取消多选</button>
+        <button class="btn-settings" onclick="runCalendarAiAnalysis()">🧠 分析并提供换班建议 (启动对话)</button> 
+      </div>
+
+      <div class="calendar" id="calendar"></div>
+      <div class="shift-info" id="shiftInfo">
+          </div>
+      
+      <div id="calendarAiChatContainer" style="margin-top: 15px;">
+        <h3 id="calendarAiTitle">🔄 排班合规性分析与讨论</h3>
+        <div id="complianceAdviceStatus" style="padding: 10px; border: 1px solid #ddd;
+border-radius: 4px;">点击上方 "分析并提供换班建议" 按钮启动对话。</div>
+        <div id="calendarChatHistory" class="ai-chat-history"></div>
+        <div id="calendarChatInputContainer" class="ai-chat-input-container" style="display:none;">
+            <textarea id="calendarChatInput" placeholder="基于以上分析继续提问（例如：将10号的班挪到12号是否合规？）" rows="1" onkeydown="handlePanelChatInput(event, 'calendar')"></textarea>
+            <button onclick="sendPanelChatMessage('calendar')">发送</button>
+        </div>
+      </div>
+
+      <div class="week-summary">
+        <h3>📅 连续7天工时统计（仅含当月日期的轮次）</h3>
+        <div class="week-list" id="weekList"></div>
+      </div>
+    </div>
+
+    <div id="panel-stats" class="panel">
+      <h2>📊 高级统计分析</h2>
+      <div class="stats-controls">
+        <div><label>开始日期</label><input type="date" id="statStartDate" /></div>
+        <div><div><label>结束日期</label><input type="date" id="statEndDate" /></div></div>
+        <div><button class="btn-settings" onclick="renderStatsWithRange()">🔍 分析</button></div>
+      </div>
+      <div class="stats-grid" id="statsGrid"></div>
+      <div id="chartContainer"><canvas id="monthlyChart"></canvas></div>
+
+      <div style="margin-top: 25px;
+border-top: 1px solid #eee; padding-top: 15px;">
+          <div id="statsAiChatContainer">
+            <h3 id="statsAiTitle">📈 AI 智能总结与讨论</h3>
+            <button class="btn-settings" onclick="runAiAnalysis()">🧠 启动 AI 总结 (启动对话)</button>
+            <div id="aiSummaryResultStatus" style="padding: 10px;
+border: 1px solid #ddd; border-radius: 4px; margin-top: 10px;">请先选择日期范围并点击“分析”，然后点击上方按钮启动对话。</div>
+            <div id="statsChatHistory" class="ai-chat-history"></div>
+            <div id="statsChatInputContainer" class="ai-chat-input-container" style="display:none;">
+                <textarea id="statsChatInput" placeholder="基于以上总结继续提问（例如：我应该如何在休息日更好地恢复精力？）" rows="1" onkeydown="handlePanelChatInput(event, 'stats')"></textarea>
+                <button onclick="sendPanelChatMessage('stats')">发送</button>
+            </div>
+          </div>
+    
+   </div>
+    </div>
+
+    <div id="panel-chat" class="panel">
+        <h2>💬 AI 私人健康助手</h2>
+        <p style="color: #666;">
+            您可以在此与 AI 私人健康助手进行对话，获取关于夜班下的健康、情绪和生活质量的建议。
+            <span id="chatConfigStatus" style="font-weight: bold;"></span>
+        </p>
+        
+        <div class="chat-controls">
+            <div><label>分析开始日期</label><input type="date" 
+id="chatStartDate" /></div>
+            <div><div><label>分析结束日期</label><input type="date" id="chatEndDate" /></div></div>
+            <div>
+                <button class="btn-settings" onclick="AIAssistant.analyzeShiftData()">📈 获取并分析排班对健康的影响</button>
+            </div>
+        </div>
+        <div style="margin-top: 10px;">
+            <button class="btn-clear" onclick="resetChatHistory()">🔄 重置对话</button>
+        
+</div>
+
+        <div id="chatContainer">
+            <div id="chatHistory"></div>
+            <div id="chatInputContainer">
+                <textarea id="chatInput" placeholder="输入您的问题..." rows="1" onkeydown="handleChatInput(event)"></textarea>
+                <button id="chatSendBtn" onclick="sendChatMessage()">发送</button>
+            </div>
+        </div>
+    </div>
+
+   
+ <div id="panel-settings" class="panel">
+      <h2>⚙️ 系统设置</h2>
+      <p>修改后自动保存，所有设备同步生效。</p>
+      <div class="settings-grid">
+        <div class="setting-item"><label>大夜班主时段（小时）</label><input type="number" step="0.1" id="settingBigMain" /></div>
+        <div class="setting-item"><label>大夜班次日时段（小时）</label><input type="number" step="0.1" id="settingBigNext" /></div>
+        <div class="setting-item"><label>小夜班工时（小时）</label><input type="number" step="0.1" id="settingSmall" /></div>
+        <div class="setting-item"><label>合规阈值（7天最大工时）</label><input type="number" step="0.1" id="settingLimit" /></div>
+        <div class="setting-item"><label>默认视图</label><select id="settingDefaultView"><option value="week">标准周历</option><option value="cycle">6天循环历</option></select></div>
+        <div class="setting-item"><label>同步用户ID（多设备请保持一致）</label><input type="text" id="settingUserId" placeholder="输入字母数字组合" 
+/><small style="color:#666;">用于区分不同用户数据</small></div>
+        
+        <div class="setting-item"><label>AI 服务终端点 (Endpoint URL)</label><input type="text" id="settingAiEndpoint" placeholder="如: https://api.openai.com/v1/chat/completions" /></div>
+        <div class="setting-item"><label>AI API 密钥 (Key)</label><input type="password" id="settingAiApiKey" placeholder="输入您的密钥" /><small style="color:#666;">密钥仅保存在本地/云端，请妥善保管。</small></div>
+        <div class="setting-item"><label>AI 模型名称</label><input type="text" id="settingAiModel" placeholder="如: gpt-3.5-turbo" /><small style="color:#666;">用于对话的模型名称</small></div>
+      </div>
+      <div style="text-align:center;
+margin-top:20px;">
+        <button class="btn-settings" onclick="saveSettings()">💾 保存设置</button>
+        <button class="btn-clear" onclick="resetSettings()" style="margin-left:10px;">🔄 恢复默认</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="extraModal" class="modal"><div class="modal-content"><h3>额外调整工时</h3><p>对所选日期，在原有基础上增加或减少工时</p><div class="unit-selector"><label><input type="radio" name="unit" value="hour" checked /> 小时（如 1.5）</label><label><input type="radio" name="unit" value="minute" /> 分钟（如 -30）</label></div><input type="number" id="extraInput" placeholder="输入数值（可为负数）" step="any" /><div class="modal-buttons"><button onclick="applyExtra()">确定</button><button onclick="closeExtraModal()">取消</button></div></div></div>
+  <div id="contextMenu" style="position:absolute;background:white;border:1px solid #ccc;border-radius:4px;box-shadow:2px 2px 6px rgba(0,0,0,0.2);z-index:2000;display:none;min-width:120px;"><div onclick="deleteSingleShift()" style="padding:8px 12px;cursor:pointer;">删除班次</div></div>
+
+  <script>
+    // ============ Supabase 配置 ============
+    const SUPABASE_URL = 'https://morkovixfwdsaknmwavj.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1vcmtvdml4Zndkc2Frbm13YXZqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM3MzM1NDIsImV4cCI6MjA3OTMwOTU0Mn0.wh-UEaQyr3bpJBQkCrzJpRR5v4NvRpx3LsnsAo-DGqE';
+
+    // ============ 核心改进：同步管理器 ============
+    class SyncManager {
+      constructor() {
+        this.isSyncing = false;
+this.lastSyncTime = 0;
+        this.minSyncInterval = 5000;
+        this.pendingSync = false;
+      }
+      async sync(saveToStorageFn, options = { sync: true }) {
+        if (this.isSyncing) {
+          this.pendingSync = true;
+return;
+        }
+        const now = Date.now();
+if (now - this.lastSyncTime < this.minSyncInterval) {
+          if (!this.pendingSync) {
+            this.pendingSync = true;
+setTimeout(() => {
+              this.pendingSync = false;
+              this.sync(saveToStorageFn, options);
+            }, this.minSyncInterval - (now - self.lastSyncTime));
+}
+          return;
+}
+        this.isSyncing = true;
+        this.lastSyncTime = now;
+try {
+          await saveToStorageFn(options);
+} finally {
+          this.isSyncing = false;
+if (this.pendingSync) {
+            this.pendingSync = false;
+setTimeout(() => this.sync(saveToStorageFn, options), 100);
+          }
+        }
+      }
+    }
+
+    const syncManager = new SyncManager();
+// ============ 数据存储 ============
+    function getUserId() {
+      let userId = localStorage.getItem('userId');
+if (!userId) {
+        userId = 'user_' + Math.random().toString(36).substr(2, 9);
+        localStorage.setItem('userId', userId);
+}
+      return userId;
+    }
+
+    let supabase;
+try {
+      supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+} catch (e) {
+      console.error('Supabase 初始化失败:', e);
+    }
+
+    let shifts = {};
+let settings = {};
+    let selectedMonth = '';
+    let currentView = 'week';
+    let multiSelectedDates = new Set();
+let rightClickedDate = '';
+    let weekSummaries = [];
+    let chartInstance = null;
+    let isMultiSelectMode = false;
+    let currentStatsSummary = {};
+document.getElementById('userIdDisplay').textContent = getUserId().substring(0, 8);
+    
+    // 核心保存函数 (已修改为：范围删除 + 批量插入策略，并优化错误处理)
+    async function saveToStorage(options = { sync: true }) {
+      const userId = getUserId();
+      localStorage.setItem('shifts_local', JSON.stringify(shifts));
+      localStorage.setItem('selectedMonth_local', selectedMonth);
+      localStorage.setItem('shifts_settings_local', JSON.stringify(settings));
+      localStorage.setItem('userId', userId);
+      
+      if (supabase && options.sync) {
+        updateSyncStatus('syncing', '⏳ 同步中...');
+        try {
+          // --- 核心修复：采用“范围删除 + 批量插入”的同步策略 ---
+          
+          // 1. 确定当前月份的范围
+          const [year, month] = selectedMonth.split('-').map(Number);
+          const startOfMonth = `${selectedMonth}-01`;
+          const endOfMonth = new Date(year, month, 0).toISOString().split('T')[0]; 
+
+          // 2. 筛选出当前月份需要上传的 shifts
+          const shiftsToInsert = Object.entries(shifts)
+              .filter(([date, data]) => 
+                  date >= startOfMonth && 
+                  date <= endOfMonth && 
+                  data?.type !== 'none' && 
+                  data?.hours !== undefined
+              )
+              .map(([date, data]) => ({
+                  user_id: userId, 
+                  date: date, 
+                  data: data, 
+                  updated_at: new Date().toISOString() 
+              }));
+
+          // 3. Upsert Settings (确保单行记录)
+          const settingsPromise = supabase.from('settings').upsert({ 
+              user_id: userId, 
+              data: settings, 
+              updated_at: new Date().toISOString() 
+          }).select(); 
+
+          // 4. **强制删除** 该月份当前用户的所有记录 (Delete by Range)
+          const deletePromise = supabase.from('shifts')
+              .delete()
+              .eq('user_id', userId)
+              .gte('date', startOfMonth) 
+              .lte('date', endOfMonth);
+
+          // 5. 批量插入新记录 (Insert)
+          let insertPromise;
+          if (shiftsToInsert.length > 0) {
+              // 关键：这里不能使用 upsert，因为 upsert 仍然可能因之前的脏数据触发冲突。
+              // 必须先进行删除，再尝试插入。
+              insertPromise = supabase.from('shifts').insert(shiftsToInsert).select(); 
+          } else {
+              insertPromise = Promise.resolve({ data: [], error: null });
+          }
+
+          // 6. 统一等待并检查所有操作
+          const [deleteResponse, insertResponse, settingsResponse] = await Promise.all([deletePromise, insertPromise, settingsPromise]);
+
+          if (deleteResponse.error) {
+              // 删除操作失败可能导致后续插入失败，但我们尝试继续
+              console.warn('云端删除操作遇到警告（但尝试继续）:', deleteResponse.error);
+          }
+
+          if (insertResponse.error) {
+              throw insertResponse.error; // 插入失败必须报错
+          }
+          if (settingsResponse.error) {
+              throw settingsResponse.error;
+          }
+
+          updateSyncStatus('synced', '✓ 已同步');
+        } catch (error) {
+          console.error('云端同步失败:', error);
+          // 始终显示详细错误信息
+          const errorMessage = error.message || String(error);
+          updateSyncStatus('error', '✗ 同步失败: ' + errorMessage.substring(0, 50) + '...');
+        }
+      }
+    }
+
+    function saveToStorageSafe(options = { sync: true }) {
+      return syncManager.sync(saveToStorage, options);
+    }
+
+    async function loadFromCloud() {
+      if (!supabase) { loadFromLocal(); return;
+}
+      const userId = getUserId();
+      updateSyncStatus('syncing', '⏳ 加载云端数据...');
+try {
+        // 确保 load 能够获取所有数据，不仅是当前月
+        const { data: shiftsData, error: shiftsError } = await supabase.from('shifts').select('date, data').eq('user_id', userId);
+if (shiftsError) throw shiftsError;
+        const { data: settingsData, error: settingsError } = await supabase.from('settings').select('data').eq('user_id', userId).single();
+if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
+        
+        if (shiftsData) {
+          // 创建新的 shifts 对象，覆盖本地数据
+          shifts = {};
+          shiftsData.forEach(row => { shifts[row.date] = row.data; });
+          localStorage.setItem('shifts_local', JSON.stringify(shifts));
+        }
+        
+        if (settingsData?.data) {
+          settings = { ...defaultSettings, ...settingsData.data };
+          localStorage.setItem('shifts_settings_local', JSON.stringify(settings));
+        }
+        
+        updateSyncStatus('synced', '✓ 已加载');
+} catch (error) {
+        console.error('云端加载失败:', error);
+        updateSyncStatus('error', '✗ 加载失败');
+        loadFromLocal();
+}
+    }
+
+    function loadFromLocal() {
+      shifts = JSON.parse(localStorage.getItem('shifts_local') || '{}');
+selectedMonth = localStorage.getItem('selectedMonth_local') || new Date().toISOString().slice(0, 7);
+      settings = { ...defaultSettings, ...JSON.parse(localStorage.getItem('shifts_settings_local') || '{}') };
+}
+
+    function updateSyncStatus(type, message) {
+      const statusEl = document.getElementById('syncStatus');
+statusEl.className = 'sync-status ' + type;
+      statusEl.textContent = message;
+    }
+    
+    // 新增同步按钮逻辑
+    async function forceLoad() {
+      await loadFromCloud();
+      renderCalendar();
+      if (document.getElementById('panel-stats').classList.contains('active')) {
+          initDateRangeForStats(true); 
+      }
+    }
+
+    async function forceUpload() {
+        if (syncManager.isSyncing) {
+            updateSyncStatus('warning', '⚠️ 正在同步中，请稍候...');
+            return;
+        }
+        updateSyncStatus('syncing', '⏳ 正在上传...');
+        // 调用保存函数，强制进行云端同步
+        await saveToStorageSafe({ sync: true }); 
+    }
+
+    const defaultSettings = {
+      bigMain: 7.4, bigNext: 3, small: 9.3, limit: 40, defaultView: 'week',
+      aiEndpoint: 'https://api.openai.com/v1/chat/completions', aiApiKey: '', aiModel: 'gpt-3.5-turbo'
+};
+    function switchTab(tab) {
+      ['calendar', 'stats', 'chat', 'settings'].forEach(t => {
+        document.getElementById(`panel-${t}`).classList.remove('active');
+        document.getElementById(`tab-${t}`).classList.remove('active');
+      });
+document.getElementById(`panel-${tab}`).classList.add('active');
+      document.getElementById(`tab-${tab}`).classList.add('active');
+      if (tab === 'stats') { initDateRangeForStats(true); } 
+      else if (tab === 'chat') { initDateRangeForChat();
+AIAssistant.initSystemMessage(); document.getElementById('chatInput').focus(); } 
+      else if (tab === 'settings') { loadSettingsUI();
+}
+      AIAssistant.updateChatConfigStatus(); // Update status on tab switch
+    }
+
+    function switchView(view) {
+      currentView = view;
+settings.defaultView = view;
+      saveToStorageSafe({ sync: true });
+      document.querySelectorAll('.view-toggle button').forEach(btn => btn.classList.remove('active'));
+      if (view === 'week') { document.getElementById('btn-week').classList.add('active');
+} 
+      else { document.getElementById('btn-cycle').classList.add('active'); }
+      renderCalendar();
+}
+
+    function loadSettingsUI() {
+      document.getElementById('settingBigMain').value = settings.bigMain;
+      document.getElementById('settingBigNext').value = settings.bigNext;
+document.getElementById('settingSmall').value = settings.small;
+      document.getElementById('settingLimit').value = settings.limit;
+      document.getElementById('settingDefaultView').value = settings.defaultView;
+      document.getElementById('settingUserId').value = getUserId();
+      document.getElementById('settingAiEndpoint').value = settings.aiEndpoint || '';
+document.getElementById('settingAiApiKey').value = settings.aiApiKey || '';
+      document.getElementById('settingAiModel').value = settings.aiModel || '';
+}
+
+    async function saveSettings() {
+      const s = settings;
+s.bigMain = parseFloat(document.getElementById('settingBigMain').value) || defaultSettings.bigMain;
+      s.bigNext = parseFloat(document.getElementById('settingBigNext').value) || defaultSettings.bigNext;
+      s.small = parseFloat(document.getElementById('settingSmall').value) || defaultSettings.small;
+      s.limit = parseFloat(document.getElementById('settingLimit').value) || defaultSettings.limit;
+s.defaultView = document.getElementById('settingDefaultView').value;
+      s.aiEndpoint = document.getElementById('settingAiEndpoint').value.trim();
+      s.aiApiKey = document.getElementById('settingAiApiKey').value.trim();
+      s.aiModel = document.getElementById('settingAiModel').value.trim();
+      
+      const newUserId = document.getElementById('settingUserId').value.trim();
+if (newUserId && newUserId !== getUserId()) {
+        localStorage.setItem('userId', newUserId);
+        alert('🆔 用户ID已更新！请在其他设备填入相同ID以实现同步');
+}
+      await saveToStorageSafe({ sync: true });
+      alert('✅ 设置已保存并同步到云端！');
+      AIAssistant.initSystemMessage();
+      AIAssistant.updateChatConfigStatus();
+if (currentView !== s.defaultView) { switchView(s.defaultView); }
+      renderCalendar();
+}
+
+    function resetSettings() {
+      if (confirm('确定恢复默认设置？')) {
+        settings = { ...defaultSettings };
+saveToStorageSafe({ sync: true });
+        loadSettingsUI();
+        AIAssistant.initSystemMessage();
+        AIAssistant.updateChatConfigStatus();
+        renderCalendar();
+        alert('已恢复默认设置');
+      }
+    }
+
+    // ============ 日历逻辑 ============
+
+    const dayNames = ['日', '一', '二', '三', '四', '五', '六'];
+    
+    function getDayLabel(date, view) {
+      if (view === 'cycle') {
+        const firstDayOfMonth = new Date(date.getFullYear(), date.getMonth(), 1);
+        const dayDiff = Math.floor((date - firstDayOfMonth) / (1000 * 60 * 60 * 24));
+        const cycleIndex = (dayDiff % 6) + 1;
+        return `日${cycleIndex}`;
+      }
+      return dayNames[date.getDay()];
+    }
+
+    function getShiftDisplay(shiftData) {
+      if (!shiftData || shiftData.type === 'none') return '';
+      if (shiftData.type === 'auto-next') return `<span style="color:#1890ff;">${shiftData.hours.toFixed(1)}h (次日)</span>`;
+      const baseHours = shiftData.hours;
+      const extra = shiftData.extra || 0;
+      const total = baseHours + extra;
+      let typeLabel = '';
+      if (shiftData.type === 'big') typeLabel = '大夜';
+      else if (shiftData.type === 'small') typeLabel = '小夜';
+      else if (shiftData.type === 'custom') typeLabel = '自定义';
+
+      let html = `<span style="font-weight:bold;">${typeLabel}</span>`;
+      html += `<div class="day-total">${total.toFixed(1)}h</div>`;
+      if (extra !== 0) {
+        html += `<div class="day-extra">(${extra > 0 ? '+' : ''}${extra.toFixed(1)}h)</div>`;
+      }
+      return html;
+    }
+
+    function getDailyHours(dateStr) {
+      const shift = shifts[dateStr];
+      if (!shift || shift.type === 'none') return 0;
+      return (shift.hours || 0) + (shift.extra || 0);
+    }
+
+    function getShiftType(shiftData) {
+        if (!shiftData) return 'none';
+        return shiftData.type;
+    }
+
+    function getDetailedShifts(startDateStr, endDateStr) {
+        const detailedShifts = [];
+        const startDate = new Date(startDateStr);
+        const endDate = new Date(endDateStr);
+        let currentDate = new Date(startDate);
+        
+        while (currentDate <= endDate) {
+            const dateStr = currentDate.toISOString().split('T')[0];
+            const shiftData = shifts[dateStr];
+            let baseHours = 0;
+            let extraHours = 0;
+            let totalHours = 0;
+
+            if (shiftData && shiftData.type !== 'none') {
+                baseHours = shiftData.hours || 0;
+                extraHours = shiftData.extra || 0;
+                totalHours = baseHours + extraHours;
+            }
+
+            if (shiftData && shiftData.type !== 'none' && shiftData.type !== 'auto-next') {
+                detailedShifts.push({
+                    date: dateStr,
+                    shiftType: shiftData.type,
+                    baseHours: parseFloat(baseHours.toFixed(2)),
+                    extraHours: parseFloat(extraHours.toFixed(2)),
+                    totalHours: parseFloat(totalHours.toFixed(2)),
+                    raw: shiftData
+                });
+            }
+            currentDate.setDate(currentDate.getDate() + 1);
+        }
+        return detailedShifts;
+    }
+
+    function exportData() {
+      const data = {
+        version: 'cloud-sync-v4',
+        exportTime: new Date().toLocaleString(),
+        userId: getUserId(),
+        month: selectedMonth,
+        shifts: shifts,
+        settings: settings
+      };
+      const json = JSON.stringify(data, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `shift_data_backup_${new Date().toISOString().slice(0,10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    function importData(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = async function(e) {
+        try {
+          const data = JSON.parse(e.target.result);
+          if (data.version !== 'cloud-sync-v4' || !data.shifts || !data.settings) throw new Error('文件格式不匹配');
+          if (!confirm(`确定导入备份文件（${data.exportTime}）？这将覆盖现有数据。`)) return;
+          shifts = data.shifts;
+          selectedMonth = data.month;
+          settings = { ...defaultSettings, ...data.settings };
+          localStorage.setItem('userId', data.userId);
+          await saveToStorageSafe({ sync: true });
+          document.getElementById('monthInput').value = selectedMonth;
+          loadSettingsUI();
+          renderCalendar();
+          alert('✅ 数据导入并同步成功！');
+        } catch (err) {
+          console.error(err);
+          alert('导入失败：文件格式错误');
+        }
+      };
+      reader.readAsText(file);
+      event.target.value = '';
+    }
+
+    function renderCalendar() {
+      const monthInput = document.getElementById('monthInput').value;
+      if (!monthInput) return;
+      selectedMonth = monthInput;
+      saveToStorageSafe({ sync: true });
+      const year = parseInt(selectedMonth.split('-')[0]);
+      const month = parseInt(selectedMonth.split('-')[1]) - 1;
+      const firstDay = new Date(year, month, 1);
+      const lastDay = new Date(year, month + 1, 0);
+      const daysInMonth = lastDay.getDate();
+      const calendarEl = document.getElementById('calendar');
+      calendarEl.innerHTML = '';
+      let cols = 7;
+      let showHeaders = true;
+      if (currentView === 'cycle') {
+        cols = 6;
+        showHeaders = false;
+      }
+      if (showHeaders) {
+        calendarEl.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+        const dayHeaders = currentView === 'week' ? dayNames : ['日', '一', '二', '三', '四', '五', '六'].slice(1, 7);
+        dayHeaders.forEach(day => {
+          const header = document.createElement('div');
+          header.className = 'day-header';
+          header.textContent = day;
+          calendarEl.appendChild(header);
+        });
+      } else {
+        calendarEl.style.gridTemplateColumns = `repeat(6, 1fr)`; // Cycle view always 6 cols
+      }
+
+      const startDay = firstDay.getDay(); // 0-6 (Sun-Sat)
+
+      // Add empty cells for padding
+      let firstCellOffset = 0;
+      if (currentView === 'week') {
+        firstCellOffset = startDay;
+      } else { // cycle view (6 days) starts from Monday (1) to Saturday (6), Sunday (0) is last if needed.
+        if (startDay === 0) firstCellOffset = 5; // Sunday is the last day of the 6-day cycle if view is week.
+        else firstCellOffset = startDay - 1; // 1 (Mon) -> 0 offset, 6 (Sat) -> 5 offset
+      }
+
+      for (let i = 0; i < firstCellOffset; i++) {
+        const emptyCell = document.createElement('div');
+        emptyCell.className = 'day-cell empty';
+        calendarEl.appendChild(emptyCell);
+      }
+      
+      let pressTimer;
+      for (let i = 1; i <= daysInMonth; i++) {
+        const date = new Date(year, month, i);
+        const dateStr = date.toISOString().split('T')[0];
+        const cell = document.createElement('div');
+        cell.className = 'day-cell';
+        cell.dataset.date = dateStr;
+        cell.innerHTML = `<div class="day-number">${i}</div>`;
+        const shiftData = shifts[dateStr];
+        cell.innerHTML += getShiftDisplay(shiftData);
+
+        cell.addEventListener('click', (e) => {
+            const dateStr = cell.dataset.date;
+
+            if (e.ctrlKey || e.metaKey) {
+                e.preventDefault();
+                if (!isMultiSelectMode) { 
+                    isMultiSelectMode = true;
+                    updateMultiSelectUI();
+                }
+                toggleMultiSelect(dateStr, cell);
+                return;
+            }
+
+            if (isMultiSelectMode) {
+                toggleMultiSelect(dateStr, cell);
+                return;
+            }
+
+            if (e.detail === 1) { 
+                if (multiSelectedDates.size > 1 || !multiSelectedDates.has(dateStr)) {
+                    clearSelected(); 
+                    multiSelectedDates.add(dateStr); 
+                    cell.classList.add('multi-selected'); 
+                } else {
+                    clearSelected();
+                }
+                updateShiftInfo(true); // Force update shift info
+            }
+        });
+
+        cell.addEventListener('mousedown', (e) => {
+          const dateStr = cell.dataset.date;
+          if (e.button === 0 && !(e.ctrlKey || e.metaKey)) { 
+            pressTimer = setTimeout(() => { 
+                isMultiSelectMode = true; 
+                updateMultiSelectUI(); 
+                toggleMultiSelect(dateStr, cell); 
+            }, 500); 
+          }
+        });
+
+        cell.addEventListener('mouseup', () => clearTimeout(pressTimer));
+        cell.addEventListener('mouseleave', () => clearTimeout(pressTimer));
+        
+        cell.addEventListener('contextmenu', (e) => { 
+            e.preventDefault(); 
+            rightClickedDate = dateStr; 
+            const menu = document.getElementById('contextMenu'); 
+            menu.style.display = 'block'; 
+            menu.style.left = e.pageX + 'px'; 
+            menu.style.top = e.pageY + 'px'; 
+        });
+
+        updateCellClass(cell, dateStr);
+        calendarEl.appendChild(cell);
+      }
+
+      document.addEventListener('click', () => {
+        document.getElementById('contextMenu').style.display = 'none';
+      });
+
+      checkCompliance();
+      updateShiftInfo(false); // Initial render, do not force clear (only clear on button actions)
+      updateWeekSummary();
+    }
+
+    function toggleMultiSelect(dateStr, cell) {
+      if (multiSelectedDates.has(dateStr)) {
+        multiSelectedDates.delete(dateStr);
+        cell.classList.remove('multi-selected');
+      } else {
+        multiSelectedDates.add(dateStr);
+        cell.classList.add('multi-selected');
+      }
+      updateMultiSelectUI();
+    }
+
+    function clearMultiSelectUI() {
+      document.querySelectorAll('.day-cell.multi-selected').forEach(el => {
+        el.classList.remove('multi-selected');
+      });
+    }
+
+    function updateCellClass(cell, dateStr) {
+      cell.classList.remove('selected-big', 'selected-small', 'custom', 'over-limit', 'multi-selected');
+      if (multiSelectedDates.has(dateStr)) {
+          cell.classList.add('multi-selected');
+      }
+
+      const shift = shifts[dateStr];
+      if (shift) {
+        if (shift.type === 'big') cell.classList.add('selected-big');
+        else if (shift.type === 'small') cell.classList.add('selected-small');
+        else if (shift.type === 'custom') cell.classList.add('custom');
+      }
+    }
+
+    function updateMultiSelectUI() {
+      const indicator = document.getElementById('selectionModeIndicator');
+      const hint = document.getElementById('multiSelectHint');
+      if (isMultiSelectMode || multiSelectedDates.size > 0) {
+        indicator.style.display = 'inline-block';
+        hint.style.display = 'none';
+        indicator.textContent = isMultiSelectMode ? '多选模式（点击日期切换选中）' : `已选择 ${multiSelectedDates.size} 个日期`;
+      } else {
+        indicator.style.display = 'none';
+        hint.style.display = 'block';
+      }
+      
+      document.querySelectorAll('.day-cell').forEach(cell => {
+          updateCellClass(cell, cell.dataset.date);
+      });
+      updateShiftInfo(false); 
+    }
+    
+    async function applyShiftToSelected(type) {
+      if (multiSelectedDates.size === 0) {
+        alert('请先选择至少一个日期');
+        return;
+      }
+      multiSelectedDates.forEach(dateStr => {
+        const shift = shifts[dateStr] || { type: 'none', hours: 0, extra: 0 };
+        
+        // 删除旧班次的次日记录（如果有）
+        if (shift.type === 'big') {
+            const nextDay = new Date(dateStr);
+            nextDay.setDate(nextDay.getDate() + 1);
+            const nextDayStr = nextDay.toISOString().split('T')[0];
+            if (shifts[nextDayStr]?.type === 'auto-next') delete shifts[nextDayStr];
+        }
+
+        if (type === 'big') {
+          shifts[dateStr] = { type: 'big', hours: settings.bigMain, extra: shift.extra || 0 };
+          const nextDay = new Date(dateStr);
+          nextDay.setDate(nextDay.getDate() + 1);
+          const nextDayStr = nextDay.toISOString().split('T')[0];
+          shifts[nextDayStr] = { type: 'auto-next', hours: settings.bigNext, extra: 0 };
+        } else if (type === 'small') {
+          shifts[dateStr] = { type: 'small', hours: settings.small, extra: shift.extra || 0 };
+        }
+      });
+      await saveToStorageSafe({ sync: true });
+      renderCalendar();
+      clearSelected(); 
+    }
+
+    // 修复：删除所选班次时，只处理本地数据，然后同步
+    async function deleteSelected() {
+      if (multiSelectedDates.size === 0) {
+        alert('请先选择至少一个日期');
+        return;
+      }
+      if (!confirm(`确定删除这 ${multiSelectedDates.size} 个日期的排班记录吗？`)) return;
+
+      const datesToDelete = Array.from(multiSelectedDates);
+
+      datesToDelete.forEach(dateStr => {
+        // 1. 删除次日班次 (本地)
+        if (shifts[dateStr]?.type === 'big') {
+            const nextDay = new Date(dateStr);
+            nextDay.setDate(nextDay.getDate() + 1);
+            const nextDayStr = nextDay.toISOString().split('T')[0];
+            if (shifts[nextDayStr]?.type === 'auto-next') {
+              delete shifts[nextDayStr];
+            }
+        }
+        // 2. 删除主班次本地记录
+        delete shifts[dateStr];
+      });
+      
+      // 3. 触发同步。新逻辑会自动删除云端中当前月份内被删除的记录。
+      await saveToStorageSafe({ sync: true });
+      
+      renderCalendar();
+      clearSelected(); 
+    }
+
+    // 修复：右键删除单个班次时，只处理本地数据，然后同步
+    async function deleteSingleShift() {
+      document.getElementById('contextMenu').style.display = 'none';
+      if (!rightClickedDate) return;
+      
+      // 删除次日班次（如果是大夜班）
+      if (shifts[rightClickedDate]?.type === 'big') {
+          const nextDay = new Date(rightClickedDate);
+          nextDay.setDate(nextDay.getDate() + 1);
+          const nextDayStr = nextDay.toISOString().split('T')[0];
+          if (shifts[nextDayStr]?.type === 'auto-next') {
+            delete shifts[nextDayStr];
+          }
+      }
+      
+      // 删除主班次本地记录
+      delete shifts[rightClickedDate];
+
+      // 触发同步。新逻辑会自动删除云端中当前月份内被删除的记录。
+      await saveToStorageSafe({ sync: true });
+      rightClickedDate = '';
+      renderCalendar();
+    }
+
+    function clearSelected() {
+      clearMultiSelectUI();
+      multiSelectedDates.clear();
+      isMultiSelectMode = false;
+      updateMultiSelectUI();
+    }
+
+    function openExtraModal() {
+      if (multiSelectedDates.size === 0) {
+        alert('请先选择至少一个日期');
+        return;
+      }
+      document.getElementById('extraInput').value = '';
+      document.querySelector('input[name="unit"][value="hour"]').checked = true;
+      document.getElementById('extraModal').style.display = 'flex';
+    }
+
+    function closeExtraModal() {
+      document.getElementById('extraModal').style.display = 'none';
+    }
+
+    async function applyExtra() {
+      const extraInputEl = document.getElementById('extraInput');
+      let value = parseFloat(extraInputEl.value);
+      const unit = document.querySelector('input[name="unit"]:checked').value;
+      closeExtraModal();
+      if (isNaN(value) || value === 0) return;
+      if (unit === 'minute') {
+        value /= 60; // Convert minutes to hours
+      }
+
+      multiSelectedDates.forEach(dateStr => {
+        const shift = shifts[dateStr];
+        if (shift) {
+          shift.type = shift.type === 'big' || shift.type === 'small' ? shift.type : 'custom';
+          shift.extra = (shift.extra || 0) + value;
+          if (shift.type === 'custom' && !shift.hours) {
+              shift.hours = 0; 
+          }
+        } else {
+          shifts[dateStr] = { type: 'custom', hours: 0, extra: value };
+        }
+      });
+      await saveToStorageSafe({ sync: true });
+      renderCalendar();
+      clearSelected(); 
+    }
+
+    function generateAllRelevant7DayWindows() {
+      const windows = [];
+      const [year, month] = selectedMonth.split('-').map(Number);
+      const firstDayOfMonth = new Date(year, month - 1, 1);
+      const lastDayOfMonth = new Date(year, month, 0);
+      
+      const start = new Date(firstDayOfMonth);
+      start.setDate(start.getDate() - 6);
+      const end = lastDayOfMonth;
+      
+      let current = new Date(start);
+      while (current <= end) {
+        const windowEnd = new Date(current);
+        windowEnd.setDate(windowEnd.getDate() + 6); // 7th day is windowEnd
+        
+        if (windowEnd >= firstDayOfMonth) {
+            windows.push({ start: new Date(current), end: windowEnd });
+        }
+        current.setDate(current.getDate() + 1);
+      }
+      return windows;
+    }
+
+    function checkCompliance() {
+      const windows = generateAllRelevant7DayWindows();
+      weekSummaries = [];
+      const overLimitDates = new Set();
+      const limit = settings.limit;
+
+      windows.forEach(w => {
+        let total = 0;
+        const datesInRange = [];
+        for (let i = 0; i < 7; i++) {
+          const d = new Date(w.start);
+          d.setDate(d.getDate() + i);
+          const iso = d.toISOString().split('T')[0];
+          datesInRange.push(iso);
+          total += getDailyHours(iso);
+        }
+        const violation = total > limit;
+        weekSummaries.push({
+          start: w.start.toISOString().split('T')[0],
+          end: w.end.toISOString().split('T')[0],
+          total: total,
+          dates: datesInRange,
+          violation: violation
+        });
+        if (violation) {
+          // Only mark dates within the current month as over-limit on the UI
+          datesInRange.forEach(d => {
+              if (d.startsWith(selectedMonth)) overLimitDates.add(d);
+          });
+        }
+      });
+
+      document.querySelectorAll('.day-cell').forEach(cell => {
+        const dateStr = cell.dataset.date;
+        if (dateStr && overLimitDates.has(dateStr)) cell.classList.add('over-limit');
+        else cell.classList.remove('over-limit');
+      });
+    }
+
+    // 计算本月总工时
+    function calculateMonthlyStats() {
+        let totalHours = 0;
+        const [year, month] = selectedMonth.split('-').map(Number);
+        const lastDayOfMonth = new Date(year, month, 0).getDate(); 
+
+        for (let day = 1; day <= lastDayOfMonth; day++) {
+            const dateStr = `${selectedMonth}-${day.toString().padStart(2, '0')}`;
+            totalHours += getDailyHours(dateStr); 
+        }
+        return { totalHours };
+    }
+    
+    // 更新排班信息显示区域 (显示总小时和合规判断)
+    function updateShiftInfo(showDetailed = false) {
+      const infoEl = document.getElementById('shiftInfo');
+      const { totalHours } = calculateMonthlyStats();
+
+      // 合规检查：
+      const violations = weekSummaries.filter(w => w.violation && (w.start.startsWith(selectedMonth) || w.end.startsWith(selectedMonth)));
+      const violationCount = violations.length;
+      const limit = settings.limit || 40; 
+      
+      let complianceHtml;
+      if (violationCount > 0) {
+          complianceHtml = `<p class="result warn">❌ 风险提示：检测到 ${violationCount} 轮连续7天工时超过 ${limit.toFixed(1)} 小时！</p>`;
+      } else {
+          complianceHtml = `<p class="result ok">✅ 合规：本月排班符合连续7天工时不超过 ${limit.toFixed(1)} 小时的规定。</p>`;
+      }
+
+      let html = `
+          <div style="font-size: 16px; font-weight: bold; color: #1890ff; margin-bottom: 10px; text-align: center;">
+              本月总工时：${totalHours.toFixed(1)} 小时
+          </div>
+          ${complianceHtml}
+      `;
+
+      if (multiSelectedDates.size > 0 && showDetailed) {
+          let selectionTotalHours = 0;
+          let shiftsCount = { big: 0, small: 0, custom: 0, none: 0 };
+          const selectedDatesArray = Array.from(multiSelectedDates).sort();
+          const detailedList = [];
+
+          selectedDatesArray.forEach(dateStr => {
+              const shift = shifts[dateStr];
+              const hours = getDailyHours(dateStr);
+              selectionTotalHours += hours;
+              const type = getShiftType(shift);
+              shiftsCount[type]++;
+
+              let shiftDetails = '';
+              if (type !== 'none') {
+                  const base = (shift.hours || 0).toFixed(1);
+                  const extra = (shift.extra || 0).toFixed(1);
+                  shiftDetails = `总工时: ${hours.toFixed(1)}h (基础: ${base}h, 额外: ${extra}h)`;
+              } else {
+                  shiftDetails = '无班次';
+              }
+              detailedList.push(`<li>${dateStr} (${type === 'big' ? '大夜' : type === 'small' ? '小夜' : type === 'custom' ? '自定义' : '休息'}): ${shiftDetails}</li>`);
+          });
+
+          html += `
+              <hr style="margin-top: 10px; margin-bottom: 10px;">
+              <h3>已选择 ${multiSelectedDates.size} 个日期</h3>
+              <p><strong>累计总工时: ${selectionTotalHours.toFixed(1)} 小时</strong></p>
+              <p style="font-size: 14px;">
+                  大夜班: ${shiftsCount.big} 次, 
+                  小夜班: ${shiftsCount.small} 次, 
+                  自定义: ${shiftsCount.custom} 次, 
+                  休息日: ${shiftsCount.none} 天
+              </p>
+              <h4 style="margin-top: 10px;">选择日期明细:</h4>
+              <ul style="max-height: 150px; overflow-y: auto; list-style-type: none; padding-left: 0; font-size: 12px;">
+                  ${detailedList.join('')}
+              </ul>
+          `;
+      } else if (multiSelectedDates.size === 0) {
+          html += '<p style="margin-top: 10px;">请点击（或 Ctrl/Cmd+点击）日期以选择排班日期，然后使用上方按钮设置班次。</p>';
+      }
+
+      infoEl.innerHTML = html;
+    }
+
+    function updateWeekSummary() {
+      const listEl = document.getElementById('weekList');
+      listEl.innerHTML = '';
+      const limit = settings.limit;
+      weekSummaries.filter(w => w.start.startsWith(selectedMonth) || w.end.startsWith(selectedMonth)).forEach(w => {
+        const item = document.createElement('div');
+        item.className = 'week-item' + (w.violation ? ' violation' : '');
+        const range = `${w.start.split('-').slice(1).join('/')} - ${w.end.split('-').slice(1).join('/')}`;
+        let violationText = '';
+        if (w.violation) {
+          const diff = (w.total - limit).toFixed(1);
+          violationText = ` (超限 ${diff}h)`;
+        }
+        item.innerHTML = `
+            <span>${range}</span> 
+            <span style="float: right;"><strong>${w.total.toFixed(1)}h</strong>${violationText}</span>
+        `;
+        listEl.appendChild(item);
+      });
+    }
+
+    // ============ 统计分析逻辑 (保持不变) ============
+
+    function getMonthsBetween(startDate, endDate) {
+        let months = [];
+        let currentDate = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+        const endMonth = endDate.getMonth();
+        const endYear = endDate.getFullYear();
+
+        while (currentDate.getFullYear() < endYear || (currentDate.getFullYear() === endYear && currentDate.getMonth() <= endMonth)) {
+            months.push(currentDate.toISOString().slice(0, 7));
+            currentDate.setMonth(currentDate.getMonth() + 1);
+        }
+        return months;
+    }
+
+    function generateAnalysisData() {
+        const startInput = document.getElementById('statStartDate').value;
+        const endInput = document.getElementById('statEndDate').value;
+        if (!startInput || !endInput) return { error: '请选择有效的日期范围' };
+
+        const [sYear, sMonth, sDay] = startInput.split('-').map(Number);
+        const [eYear, eMonth, eDay] = endInput.split('-').map(Number);
+        const startDate = new Date(sYear, sMonth - 1, sDay);
+        const endDate = new Date(eYear, eMonth - 1, eDay);
+        endDate.setHours(23, 59, 59, 999);
+
+        if (startDate > endDate) return { error: '开始日期不能晚于结束日期' };
+
+        const allMonths = getMonthsBetween(startDate, endDate);
+        let totalWorkDays = 0;
+        let totalHours = 0;
+        let bigCount = 0, smallCount = 0, customCount = 0;
+        let workedDates = [];
+        let detailedShiftsText = '';
+        const detailedShifts = getDetailedShifts(startInput, endInput);
+
+        detailedShifts.forEach(s => {
+            if (s.totalHours > 0) {
+                totalWorkDays++;
+                totalHours += s.totalHours;
+                workedDates.push(new Date(s.date).getTime());
+                detailedShiftsText += `${s.date}: ${s.shiftType === 'big' ? '大夜班' : s.shiftType === 'small' ? '小夜班' : '自定义'} ${s.totalHours.toFixed(1)}h\n`;
+            }
+            if (s.shiftType === 'big') bigCount++;
+            else if (s.shiftType === 'small') smallCount++;
+            else if (s.shiftType === 'custom') customCount++;
+        });
+
+        let maxConsecutive = 0;
+        let currentConsecutive = 0;
+        workedDates.sort();
+        for (let i = 0; i < workedDates.length; i++) {
+            if (i === 0) {
+                currentConsecutive = 1;
+            } else {
+                const dayBefore = new Date(workedDates[i - 1]);
+                dayBefore.setDate(dayBefore.getDate() + 1);
+                const currentDay = new Date(workedDates[i]);
+                if (dayBefore.toISOString().split('T')[0] === currentDay.toISOString().split('T')[0]) {
+                    currentConsecutive++;
+                } else {
+                    currentConsecutive = 1;
+                }
+            }
+            maxConsecutive = Math.max(maxConsecutive, currentConsecutive);
+        }
+
+        let complianceViolations = 0;
+        const totalDays = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
+        for (let i = 0; i <= totalDays - 7; i++) {
+            let weekTotal = 0;
+            for (let j = 0; j < 7; j++) {
+                const d = new Date(startDate);
+                d.setDate(d.getDate() + i + j);
+                weekTotal += getDailyHours(d.toISOString().split('T')[0]);
+            }
+            if (weekTotal > settings.limit) complianceViolations++;
+        }
+
+        const avgMonthlyHours = totalHours > 0 ? (totalHours / allMonths.length).toFixed(1) : 0;
+        const avgDailyHours = totalWorkDays > 0 ? (totalHours / totalWorkDays).toFixed(1) : 0;
+        const dateRange = `${startInput} 至 ${endInput}`;
+
+        const summaryStats = {
+            dateRange: dateRange,
+            totalHours: parseFloat(totalHours.toFixed(1)),
+            totalWorkDays: totalWorkDays,
+            avgMonthlyHours: avgMonthlyHours,
+            avgDailyHours: avgDailyHours,
+            bigCount: bigCount,
+            smallCount: smallCount,
+            customCount: customCount,
+            maxConsecutive: maxConsecutive,
+            violationCount: complianceViolations,
+            allMonths: allMonths,
+            detailedShiftsText: detailedShiftsText
+        };
+        
+        return { summaryStats };
+    }
+
+
+    function calculateStatsForRange() {
+      const result = generateAnalysisData();
+      if (result.error) {
+        alert('错误：' + result.error);
+        return null;
+      }
+      currentStatsSummary = result.summaryStats;
+      return currentStatsSummary;
+    }
+
+    function renderStatsWithRange() {
+      const stats = calculateStatsForRange();
+      if (!stats) return;
+
+      const aiResultStatusEl = document.getElementById('aiSummaryResultStatus');
+      
+      const { 
+          dateRange, totalHours, totalWorkDays, avgMonthlyHours, avgDailyHours, 
+          bigCount, smallCount, customCount, maxConsecutive, violationCount, allMonths 
+      } = currentStatsSummary;
+
+      const statsArray = [
+          { label: '统计时间段', value: dateRange },
+          { label: '总工时', value: `${totalHours} 小时` },
+          { label: '平均每月工时', value: `${avgMonthlyHours} 小时` },
+          { label: '工作天数', value: `${totalWorkDays} 天` },
+          { label: '平均每日工时', value: `${avgDailyHours} 小时` },
+          { label: '大夜班次数', value: `${bigCount} 次` },
+          { label: '小夜班次数', value: `${smallCount} 次` },
+          { label: '自定义/额外班次', value: `${customCount} 次` },
+          { label: '最长连续工作', value: `${maxConsecutive} 天` },
+          { label: `连续7天超限次数 (限${settings.limit}h)`, value: `${violationCount} 次`, isViolation: violationCount > 0 },
+      ];
+
+      let html = '';
+      statsArray.forEach(stat => {
+        const cls = stat.isViolation ? 'warn' : '';
+        html += `<div class="stat-item ${cls}"><label>${stat.label}</label><div class="stat-value">${stat.value}</div></div>`;
+      });
+
+      document.getElementById('statsGrid').innerHTML = html;
+      renderMonthlyHoursChart(allMonths, currentStatsSummary.dateRange.split(' 至 ')[0], currentStatsSummary.dateRange.split(' 至 ')[1]);
+      aiResultStatusEl.textContent = '✅ 数据分析已完成。点击 "启动 AI 总结" 按钮开始对话。';
+      
+      resetPanelChat('stats', aiResultStatusEl.textContent);
+    }
+
+    function renderMonthlyHoursChart(months, start, end) {
+      if (chartInstance) chartInstance.destroy();
+      const chartEl = document.getElementById('monthlyChart');
+      if (!chartEl) return;
+      
+      const monthData = months.map(monthStr => {
+          let monthTotalHours = 0;
+          let monthWorkDays = 0;
+          const [year, monthIndex] = monthStr.split('-').map(Number);
+          const lastDay = new Date(year, monthIndex, 0).getDate();
+          
+          for (let i = 1; i <= lastDay; i++) {
+              const dateStr = `${monthStr}-${String(i).padStart(2, '0')}`;
+              const shift = shifts[dateStr];
+              const hours = getDailyHours(dateStr);
+              if (hours > 0) {
+                  monthTotalHours += hours;
+                  monthWorkDays++;
+              }
+          }
+          return { month: monthStr, hours: parseFloat(monthTotalHours.toFixed(1)), days: monthWorkDays };
+      });
+      
+      const labels = monthData.map(d => d.month);
+      const hoursData = monthData.map(d => d.hours);
+      const daysData = monthData.map(d => d.days);
+
+      chartInstance = new Chart(chartEl, {
+          type: 'bar',
+          data: {
+              labels: labels,
+              datasets: [{
+                  label: '总工时 (小时)',
+                  data: hoursData,
+                  backgroundColor: 'rgba(24, 144, 255, 0.6)',
+                  borderColor: 'rgba(24, 144, 255, 1)',
+                  borderWidth: 1,
+                  yAxisID: 'y'
+              }, {
+                  label: '工作天数 (天)',
+                  data: daysData,
+                  backgroundColor: 'rgba(82, 196, 26, 0.6)',
+                  borderColor: 'rgba(82, 196, 26, 1)',
+                  borderWidth: 1,
+                  type: 'line',
+                  fill: false,
+                  yAxisID: 'y1'
+              }]
+          },
+          options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              scales: {
+                  y: {
+                      type: 'linear',
+                      display: true,
+                      position: 'left',
+                      title: {
+                          display: true,
+                          text: '工时 (小时)'
+                      },
+                      grid: {
+                          drawOnChartArea: true
+                      }
+                  },
+                  y1: {
+                      type: 'linear',
+                      display: true,
+                      position: 'right',
+                      title: {
+                          display: true,
+                          text: '工作天数 (天)'
+                      },
+                      grid: {
+                          drawOnChartArea: false
+                      }
+                  }
+              },
+              plugins: {
+                  legend: {
+                      position: 'top'
+                  },
+                  title: {
+                      display: true,
+                      text: `每月工时与天数概览 (${start} - ${end})`
+                  }
+              }
+          }
+      });
+    }
+
+
+    // ========== AI 核心调用函数 ========== 
+
+    async function runChatCompletion(messages, endpoint, apiKey, model, isStreaming = false, chunkCallback = null) {
+        if (!endpoint || !apiKey) {
+            throw new Error("AI 服务终端点或 API 密钥未配置。");
+        }
+
+        try {
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKey}`
+                },
+                body: JSON.stringify({
+                    model: model,
+                    messages: messages, 
+                    stream: isStreaming
+                })
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`API 调用失败 [${response.status}]: ${errorText.substring(0, 100)}...`);
+            }
+            
+            if (isStreaming) {
+                if (!response.body) throw new Error("API响应没有正文（可能不支持流式传输）。");
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder("utf-8");
+                let fullText = "";
+                let buffer = "";
+
+                try {
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+                        buffer += decoder.decode(value, { stream: true });
+                        let lines = buffer.split('\n');
+                        buffer = lines.pop();
+
+                        for (const line of lines) {
+                            const trimmedLine = line.trim();
+                            if (!trimmedLine || trimmedLine === 'data: [DONE]') continue;
+
+                            try {
+                                const json = JSON.parse(trimmedLine.substring(5));
+                                const content = json.choices[0].delta.content || "";
+                                fullText += content;
+                                if (content && chunkCallback) {
+                                    chunkCallback(content);
+                                }
+                            } catch (e) {
+                                // Ignore json parsing errors for incomplete chunks
+                            }
+                        }
+                    }
+                    if (buffer && buffer !== 'data: [DONE]') {
+                         const json = JSON.parse(buffer.substring(5));
+                         const content = json.choices[0].delta.content || "";
+                         fullText += content;
+                         if (content && chunkCallback) {
+                             chunkCallback(content);
+                         }
+                    }
+                    return fullText;
+
+                } catch (e) {
+                    console.error("流式读取错误:", e);
+                    throw e;
+                }
+            } else {
+                 const json = await response.json();
+                 return json.choices[0].message.content;
+            }
+
+        } catch (error) {
+            console.error('API Error:', error);
+            throw error;
+        }
+    }
+
+
+    // ========== AI 通用服务函数 ========== 
+    const isStreaming = true;
+    const panelChatHistory = { calendar: [], stats: [] };
+    const isPanelTyping = { calendar: false, stats: false };
+    const panelContexts = { calendar: { system: '', data: '' }, stats: { system: '', data: '' } };
+
+    function getPanelChatElements(panelId) {
+        return {
+            historyEl: document.getElementById(`${panelId}ChatHistory`),
+            inputEl: document.getElementById(`${panelId}ChatInput`),
+            inputContainerEl: document.getElementById(`${panelId}ChatInputContainer`),
+            statusEl: document.getElementById(panelId === 'calendar' ? 'complianceAdviceStatus' : 'aiSummaryResultStatus'),
+            sendBtn: document.querySelector(`#${panelId}ChatInputContainer button`)
+        };
+    }
+
+    // 确保聊天记录垂直堆叠
+    function displayPanelMessage(panelId, role, content, save = true) {
+      const { historyEl } = getPanelChatElements(panelId);
+      if (!historyEl) return;
+      
+      historyEl.classList.add('visible'); 
+
+      const msgDiv = document.createElement('div');
+      msgDiv.className = 'chat-message ' + (role === 'user' ? 'chat-user' : 'chat-ai');
+      const formattedContent = content
+        .replace(/```(.*?)\n([\s\S]*?)```/gs, (match, lang, code) => {
+          return `<pre><code>${code.trim()}</code></pre>`;
+        })
+        .replace(/\n/g, '<br>');
+      msgDiv.innerHTML = formattedContent;
+      historyEl.appendChild(msgDiv);
+      historyEl.scrollTop = historyEl.scrollHeight;
+
+      if (save && role !== 'system') {
+        panelChatHistory[panelId].push({ role, content });
+      }
+    }
+
+    // 重置时移除 visible 类
+    function resetPanelChat(panelId, initialMessage = null) {
+      const { historyEl, inputContainerEl, statusEl } = getPanelChatElements(panelId);
+      panelChatHistory[panelId] = [];
+      isPanelTyping[panelId] = false;
+      if (historyEl) {
+        historyEl.innerHTML = '';
+        historyEl.classList.remove('visible'); // 移除 visible 类
+      }
+      if (statusEl) {
+          statusEl.style.display = 'block';
+          if (initialMessage) statusEl.textContent = initialMessage;
+      }
+      if (inputContainerEl) inputContainerEl.style.display = 'none';
+    }
+
+    // 将系统消息和上下文数据合并成一个 system 消息
+    async function sendPanelChatMessage(panelId, initialPrompt = null) {
+      const { inputEl, inputContainerEl, statusEl, historyEl, sendBtn } = getPanelChatElements(panelId);
+      const userMessage = initialPrompt || inputEl.value.trim();
+      if (!userMessage && !initialPrompt) return;
+      if (isPanelTyping[panelId]) return;
+
+      if (!settings.aiEndpoint || !settings.aiApiKey) {
+        displayPanelMessage(panelId, 'ai', '❌ 错误：请在“设置”中配置 AI 服务终端点和 API 密钥。', false);
+        return;
+      }
+      
+      if (statusEl) statusEl.style.display = 'none';
+      historyEl.classList.add('visible'); // 确保可见且垂直
+      inputContainerEl.style.display = 'flex';
+
+      if (!initialPrompt) {
+          displayPanelMessage(panelId, 'user', userMessage);
+          inputEl.value = '';
+          inputEl.style.height = 'auto';
+      }
+
+      isPanelTyping[panelId] = true;
+      inputEl.disabled = true;
+      sendBtn.disabled = true;
+
+      // 修复：合并系统提示和上下文数据
+      const combinedSystemContent = `${panelContexts[panelId].system}\n\n【排班数据/背景信息】\n${panelContexts[panelId].data}`;
+      const combinedSystemMessage = { role: 'system', content: combinedSystemContent };
+      const userPromptMessage = { role: 'user', content: userMessage };
+
+      // 构造 API 请求的 messages 数组：[合并的System, ...历史记录, UserPrompt]
+      let messages = [combinedSystemMessage, ...panelChatHistory[panelId].filter(m => m.role !== 'system'), userPromptMessage];
+
+      const aiMessageEl = document.createElement('div');
+      aiMessageEl.className = 'chat-message chat-ai';
+      aiMessageEl.innerHTML = 'AI 正在思考...';
+      historyEl.appendChild(aiMessageEl);
+      historyEl.scrollTop = historyEl.scrollHeight;
+
+      try {
+        const fullResponse = await runChatCompletion( 
+            messages, 
+            settings.aiEndpoint, 
+            settings.aiApiKey, 
+            settings.aiModel, 
+            true, 
+            (chunk) => {
+              if (aiMessageEl.textContent === 'AI 正在思考...') {
+                  aiMessageEl.textContent = '';
+                  aiMessageEl.innerHTML = '';
+              }
+              aiMessageEl.innerHTML += chunk.replace(/\n/g, '<br>');
+              aiMessageEl.scrollTop = aiMessageEl.scrollHeight;
+            }
+        );
+        
+        // Final format of the full response after streaming
+        aiMessageEl.innerHTML = fullResponse
+             .replace(/```(.*?)\n([\s\S]*?)```/gs, (match, lang, code) => {
+                return `<pre><code>${code.trim()}</code></pre>`;
+             })
+             .replace(/\n/g, '<br>');
+
+        panelChatHistory[panelId].push({ role: 'ai', content: fullResponse });
+
+      } catch (error) {
+        console.error('API Error:', error);
+        aiMessageEl.innerHTML = `❌ API 调用失败: ${error.message}`.replace(/\n/g, '<br>');
+      } finally {
+        isPanelTyping[panelId] = false;
+        inputEl.disabled = false;
+        sendBtn.disabled = false;
+        inputEl.style.height = 'auto';
+      }
+    }
+
+    function handlePanelChatInput(event, panelId) {
+      const inputEl = document.getElementById(`${panelId}ChatInput`);
+      inputEl.style.height = 'auto';
+      inputEl.style.height = inputEl.scrollHeight + 'px';
+      if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
+        sendPanelChatMessage(panelId);
+      }
+    }
+
+    // ========== Calendar AI 逻辑 (启动对话) ========== 
+    async function runCalendarAiAnalysis() {
+      // ... (代码逻辑不变) ...
+      const panelId = 'calendar';
+      const { statusEl } = getPanelChatElements(panelId);
+      if (!settings.aiEndpoint || !settings.aiApiKey) {
+        resetPanelChat(panelId, '❌ 错误：请在“设置”中配置 AI 服务终端点和 API 密钥。');
+        return;
+      }
+
+      const violations = weekSummaries.filter(w => w.violation);
+      if (violations.length === 0) {
+        const msg = `✅ AI 分析：本月排班完全符合连续7天工时不超过 ${settings.limit} 小时的规定。不需要换班或调整。`;
+        resetPanelChat(panelId, msg);
+        return;
+      }
+
+      // 构建系统和上下文
+      const violationDetails = violations.map(w => `\n- ${w.start} to ${w.end}: ${w.total.toFixed(2)} 小时 (超限 ${ (w.total - settings.limit).toFixed(2) } 小时)`).join('');
+      const currentMonthShifts = getDetailedShifts(`${selectedMonth}-01`, new Date(selectedMonth.split('-')[0], selectedMonth.split('-')[1], 0).toISOString().split('T')[0]);
+      const shiftDetails = currentMonthShifts.map(s => {
+          if (s.shiftType === 'big') return `${s.date}: 大夜班 (含次日) 总${s.totalHours.toFixed(1)}h`;
+          if (s.shiftType === 'small') return `${s.date}: 小夜班 总${s.totalHours.toFixed(1)}h`;
+          if (s.shiftType === 'custom') return `${s.date}: 自定义班次 总${s.totalHours.toFixed(1)}h`;
+          return null;
+      }).filter(Boolean).join('; ');
+
+      const contextData = `
+        当前分析月份为 ${selectedMonth}。
+        规则限制：连续7天工时不得超过 ${settings.limit} 小时。
+        --- 检测到的违规轮次 ---
+        共发现 ${violations.length} 次超限：${violationDetails}
+        --- 本月排班记录摘要 (仅供参考) ---
+        ${shiftDetails}
+      `;
+      
+      panelContexts[panelId].system = `你是一个专业的夜班工时合规改进顾问。你的唯一任务是根据用户提供的违规排班记录，提出**具体的、可操作的**修改建议，以消除所有超限轮次，并尽量保持原排班的完整性。建议应以**清晰的步骤**（例如：将X日的班次调整为休息，将Y日调整为Z班次）给出。`;
+      panelContexts[panelId].data = contextData;
+
+      // 初始提问
+      const initialPrompt = `请根据以上违规情况，提供一个修改排班的建议方案，以确保所有连续7天工时不超限。`;
+
+      // 重置并启动对话
+      resetPanelChat(panelId);
+      displayPanelMessage(panelId, 'user', `请求排班修改建议（基于 ${violations.length} 次超限）。数据已提交给 AI。`);
+      sendPanelChatMessage(panelId, initialPrompt);
+    }
+
+    // ========== Stats AI 逻辑 (启动对话) ========== 
+    async function runAiAnalysis() {
+      // ... (代码逻辑不变) ...
+      const panelId = 'stats';
+      if (!settings.aiEndpoint || !settings.aiApiKey) {
+        resetPanelChat(panelId, '❌ 错误：请在“设置”中配置 AI 服务终端点和 API 密钥。');
+        return;
+      }
+
+      const data = generateAnalysisData();
+      if (data.error) {
+        resetPanelChat(panelId, `❌ 错误：${data.error}`);
+        return;
+      }
+
+      // 构建系统和上下文
+      const { 
+          dateRange, totalHours, totalWorkDays, avgMonthlyHours, avgDailyHours, 
+          bigCount, smallCount, customCount, maxConsecutive, violationCount, detailedShiftsText 
+      } = data.summaryStats;
+
+      const contextData = `
+        用户在 ${dateRange} 期间的排班记录和统计摘要：
+        --- 统计摘要 ---
+        - 总工时: ${totalHours} 小时
+        - 总工作天数: ${totalWorkDays} 天
+        - 最大连续工作天数: ${maxConsecutive} 天
+        - 大夜班次数: ${bigCount} 次
+        - 小夜班次数: ${smallCount} 次
+        - 平均每月工时: ${avgMonthlyHours} 小时
+        - 连续7天工时超限次数: ${violationCount} 次 (规则限制 ${settings.limit} 小时)
+        --- 详细排班数据 ---
+        ${detailedShiftsText}
+      `;
+      
+      panelContexts[panelId].system = `你是一位专业的个人健康与生活规划师。你的任务是基于用户提供的排班记录，分析其工作强度和夜班频率，并提供**人性化的、关怀备至的生活建议**。请**避免**提供用户无法实施的“调整排班”或“修改制度”的建议，重点在于用户可以**自我管理**的部分（如休息时间安排、健康饮食、应对疲劳、社交活动安排等）。`;
+      panelContexts[panelId].data = contextData;
+
+      // 初始提问
+      const initialPrompt = `请你根据这些信息，提供一份专业的长期健康与生活平衡分析总结。请用中文分点总结：\n1. **工作节奏与强度评估**；\n2. **生活质量风险提示**；\n3. **人性化建议（自我管理）**。`;
+
+      // 重置并启动对话
+      resetPanelChat(panelId);
+      displayPanelMessage(panelId, 'user', `统计分析摘要请求（范围：${dateRange}）。数据已提交给 AI。`);
+      sendPanelChatMessage(panelId, initialPrompt);
+    }
+
+    // ========== AI 对话逻辑 (Chat 面板) - 修复 System 消息合并 ========== 
+    
+    class AIAssistant {
+      static history = [];
+      static isTyping = false;
+      static historyEl = document.getElementById('chatHistory');
+      static chatInputEl = document.getElementById('chatInput');
+      static systemMessage = { role: 'system', content: '' };
+      static contextData = ''; // 用于存储分析排班数据
+
+      static initSystemMessage() {
+          this.systemMessage = { role: 'system', content: `你是一位专业且充满人情味的私人健康助手。你的任务是基于用户提供的排班、工时数据，回答关于夜班工作下的健康、情绪和生活质量的通用问题。请以亲切、关怀的口吻回答，并提供**积极且实用的个人生活建议**（如睡眠优化、饮食、运动、情绪调节等）。你不能直接修改排班数据。` };
+          this.contextData = ''; // 初始化时清空上下文数据
+      }
+
+      static updateChatConfigStatus() {
+          const statusEl = document.getElementById('chatConfigStatus');
+          if (settings.aiEndpoint && settings.aiApiKey) {
+              statusEl.textContent = ` (AI服务: ${settings.aiModel}, 已连接)`;
+              statusEl.style.color = '#52c41a';
+          } else {
+              statusEl.textContent = ' (AI服务未配置，请到“设置”中配置 API 密钥)';
+              statusEl.style.color = '#ff4d4f';
+          }
+      }
+
+      static displayMessage(role, content, save = true) {
+          const msgDiv = document.createElement('div');
+          msgDiv.className = 'chat-message ' + (role === 'user' ? 'chat-user' : 'chat-ai');
+          const formattedContent = content
+               .replace(/```(.*?)\n([\s\S]*?)```/gs, (match, lang, code) => {
+                  return `<pre><code>${code.trim()}</code></pre>`;
+               })
+               .replace(/\n/g, '<br>');
+          msgDiv.innerHTML = formattedContent;
+          this.historyEl.appendChild(msgDiv);
+          this.historyEl.scrollTop = this.historyEl.scrollHeight;
+
+          if (save && role !== 'system') {
+              this.history.push({ role, content });
+          }
+      }
+
+      static displayChunk(content) {
+          const historyEl = AIAssistant.historyEl;
+          let lastMessage = historyEl.lastChild;
+          
+          if (!lastMessage || !lastMessage.classList.contains('chat-ai')) {
+              lastMessage = document.createElement('div');
+              lastMessage.className = 'chat-message chat-ai';
+              historyEl.appendChild(lastMessage);
+          }
+          
+          const formattedContent = content
+               .replace(/```(.*?)\n([\s\S]*?)```/gs, (match, lang, code) => {
+                    // This block should handle the final formatting correctly by replacing the streaming output.
+                    return `<pre><code>${code.trim()}</code></pre>`;
+               })
+               .replace(/\n/g, '<br>');
+
+          // Since we are streaming, we append the raw chunk content here, which may contain partial markdown/html
+          // The final message formatting in sendMessage will clean this up.
+          lastMessage.innerHTML += content.replace(/\n/g, '<br>');
+          historyEl.scrollTop = historyEl.scrollHeight;
+      }
+      
+      static async sendMessage(userMessage) {
+        if (this.isTyping) return;
+        this.isTyping = true;
+
+        this.displayMessage('user', userMessage);
+        this.chatInputEl.value = '';
+        this.chatInputEl.disabled = true;
+        document.getElementById('chatSendBtn').disabled = true;
+        
+        // 修复：合并系统消息和上下文数据
+        let finalSystemContent = this.systemMessage.content;
+        if (this.contextData) {
+            finalSystemContent = `${this.systemMessage.content}\n\n${this.contextData}`;
+        }
+        const finalSystemMessage = { role: 'system', content: finalSystemContent };
+        const messages = [finalSystemMessage, ...this.history];
+
+
+        let finalResponse = '';
+        let isError = false;
+
+        try {
+            // Display initial AI thinking message before streaming starts
+            const aiMessageEl = document.createElement('div');
+            aiMessageEl.className = 'chat-message chat-ai';
+            aiMessageEl.innerHTML = 'AI 正在思考...';
+            this.historyEl.appendChild(aiMessageEl);
+            this.historyEl.scrollTop = this.historyEl.scrollHeight;
+
+            finalResponse = await runChatCompletion( 
+                messages, 
+                settings.aiEndpoint, 
+                settings.aiApiKey, 
+                settings.aiModel, 
+                isStreaming, 
+                (chunk) => {
+                   if (aiMessageEl.textContent === 'AI 正在思考...') {
+                       aiMessageEl.textContent = '';
+                       aiMessageEl.innerHTML = '';
+                   }
+                   aiMessageEl.innerHTML += chunk.replace(/\n/g, '<br>'); 
+                   aiMessageEl.scrollTop = aiMessageEl.scrollHeight;
+                }
+            );
+        } catch (error) {
+            isError = true;
+            finalResponse = `❌ API 调用失败: ${error.message}`;
+        }
+        
+        // Finalize the last message's formatting after streaming is complete
+        const lastMessage = this.historyEl.lastChild;
+        if (lastMessage) {
+            lastMessage.innerHTML = finalResponse
+                 .replace(/```(.*?)\n([\s\S]*?)```/gs, (match, lang, code) => {
+                    return `<pre><code>${code.trim()}</code></pre>`;
+                 })
+                 .replace(/\n/g, '<br>');
+        }
+        
+        if (!isError) {
+             this.history.push({ role: 'ai', content: finalResponse });
+        } else {
+             // If error, store the error message in history but not for context
+             this.history.push({ role: 'ai', content: finalResponse }); 
+        }
+        
+        this.isTyping = false;
+        this.chatInputEl.disabled = false;
+        document.getElementById('chatSendBtn').disabled = false;
+        this.chatInputEl.style.height = 'auto';
+      }
+
+      static async analyzeShiftData() {
+        if (AIAssistant.isTyping) return;
+        
+        const startInput = document.getElementById('chatStartDate').value;
+        const endInput = document.getElementById('chatEndDate').value;
+        
+        if (!startInput || !endInput) {
+          AIAssistant.displayMessage('ai', '❌ 请先在日期输入框中选择有效的分析日期范围。', false);
+          return;
+        }
+
+        const detailedShifts = getDetailedShifts(startInput, endInput);
+
+        if (detailedShifts.length === 0) {
+          AIAssistant.displayMessage('ai', `⚠️ 在 ${startInput} 至 ${endInput} 范围内未找到任何排班记录。请检查您选择的日期。`, false);
+          return;
+        }
+
+        const conciseShiftLines = detailedShifts.map(s => {
+          let description = '';
+          if (s.shiftType === 'big') description = `大夜班 (本日${s.raw.hours.toFixed(1)}h + 次日${settings.bigNext.toFixed(1)}h)`;
+          else if (s.shiftType === 'small') description = `小夜班 (${s.totalHours.toFixed(1)}h)`;
+          else if (s.shiftType === 'custom') description = `自定义班次 (${s.totalHours.toFixed(1)}h)`;
+          return `${s.date}: ${description}`;
+        }).join('\n');
+
+        // 修复：将上下文数据存入 contextData 变量
+        AIAssistant.contextData = `
+【排班分析数据】
+用户提供的排班数据范围为 ${startInput} 至 ${endInput}，具体记录如下：
+${conciseShiftLines}`;
+        
+        AIAssistant.history = []; // 清空用户/AI历史记录
+
+        AIAssistant.displayMessage('ai', `✅ 已成功载入 ${startInput} 至 ${endInput} 期间的排班数据 (${detailedShifts.length} 条记录)。请随时提问！`, false);
+        
+        const starterPrompt = `请根据我载入的排班数据，总结我的夜班频率和工作强度，并为我提供一份关于如何调整作息和饮食的建议。`;
+        AIAssistant.sendMessage(starterPrompt);
+      }
+    }
+    
+    // Global functions for chat
+    function sendChatMessage() {
+        const input = document.getElementById('chatInput');
+        const message = input.value.trim();
+        if (message) {
+            AIAssistant.sendMessage(message);
+        }
+    }
+    
+    function resetChatHistory() {
+        if (confirm('确定重置对话吗？排班分析数据也将被清除。')) {
+             AIAssistant.history = [];
+             AIAssistant.contextData = ''; // 清除上下文数据
+             AIAssistant.initSystemMessage();
+             AIAssistant.historyEl.innerHTML = '';
+             AIAssistant.displayMessage('ai', '对话已重置。您可以重新选择日期范围并点击“获取并分析排班对健康的影响”，或直接提问。', false);
+        }
+    }
+
+    function handleChatInput(event) {
+      const inputEl = document.getElementById('chatInput');
+      inputEl.style.height = 'auto';
+      inputEl.style.height = inputEl.scrollHeight + 'px';
+      if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
+        sendChatMessage();
+      }
+    }
+    
+    // Helper function to initialize date inputs for stats/chat panels
+    function initDateRangeForStats(forceRender = false) {
+        const endDate = new Date();
+        const startDate = new Date();
+        startDate.setDate(endDate.getDate() - 30); // Default to last 30 days
+
+        const format = (date) => date.toISOString().split('T')[0];
+        
+        const statStartEl = document.getElementById('statStartDate');
+        const statEndEl = document.getElementById('statEndDate');
+        
+        if (!statStartEl.value) statStartEl.value = format(startDate);
+        if (!statEndEl.value) statEndEl.value = format(endDate);
+        
+        if (forceRender) {
+            renderStatsWithRange();
+        }
+    }
+    
+    function initDateRangeForChat() {
+        const endDate = new Date();
+        const startDate = new Date();
+        startDate.setDate(endDate.getDate() - 30); // Default to last 30 days
+        const format = (date) => date.toISOString().split('T')[0];
+
+        const chatStartEl = document.getElementById('chatStartDate');
+        const chatEndEl = document.getElementById('chatEndDate');
+
+        if (!chatStartEl.value) chatStartEl.value = format(startDate);
+        if (!chatEndEl.value) chatEndEl.value = format(endDate);
+    }
+    
+    // Call load and render on window load
+    window.onload = async () => {
+      loadFromLocal();
+      // Set default month input value
+      document.getElementById('monthInput').value = selectedMonth || new Date().toISOString().slice(0, 7);
+      
+      AIAssistant.initSystemMessage();
+      AIAssistant.updateChatConfigStatus();
+
+      // 初始化所有面板的聊天状态
+      resetPanelChat('calendar', '点击 "分析并提供换班建议" 启动对话。');
+      resetPanelChat('stats', '请先选择日期范围并点击“分析”，然后点击 "启动 AI 总结" 启动对话。');
+
+      await loadFromCloud();
+      renderCalendar();
+      const defaultTab = settings.defaultView || document.querySelector('.nav-tabs button.active')?.id.replace('tab-', '') || 'calendar';
+      switchTab(defaultTab);
+      
+      if (supabase) {
+        const userId = getUserId();
+        let lastSyncTimestamp = 0;
+        const subscription = supabase
+          .channel('shifts-channel')
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'shifts', filter: `user_id=eq.${userId}` }, async (payload) => {
+            const now = Date.now();
+            if (now - lastSyncTimestamp < 2000) return;
+            lastSyncTimestamp = now;
+            console.log('收到云端班次更新', payload.eventType);
+            await loadFromCloud();
+            renderCalendar();
+          })
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'settings', filter: `user_id=eq.${userId}` }, async (payload) => {
+            const now = Date.now();
+            if (now - lastSyncTimestamp < 2000) return;
+            lastSyncTimestamp = now;
+            console.log('收到云端设置更新', payload.eventType);
+            await loadFromCloud();
+            loadSettingsUI();
+          })
+          .subscribe((status) => { console.log('实时订阅状态:', status); });
+        
+        window.supabaseSubscription = subscription;
+      }
+    };
+
+    window.onclick = (e) => { 
+        if (e.target.id === 'extraModal') closeExtraModal(); 
+        if (e.target.id === 'contextMenu') document.getElementById('contextMenu').style.display = 'none';
+        
+        // If not in multi-select mode and a day cell is clicked, ensure context menu is hidden
+        if (!isMultiSelectMode && !e.target.closest('.day-cell')) {
+            clearSelected();
+            updateShiftInfo(false);
+        }
+    };
+  </script>
+</body>
+</html><!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>夜班工时合规检查器（稳定同步版）</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -1184,3 +3240,4 @@
   </script>
 </body>
 </html>
+
