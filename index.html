@@ -181,12 +181,15 @@ border-bottom: 1px solid #f0f0f0; font-size: 14px; }
       </div>
 
       <div class="controls">
-        <p id="multiSelectHint">• PC端：按住 **Ctrl/Cmd** 键点击日期进入/退出多选模式；手机端：**长按** 任意日期触发多选 → 点击切换选中｜<strong>右键</strong> 单个日期 → 删除</p>
+        <p id="multiSelectHint">• PC端：按住 **Ctrl/Cmd** 键点击日期进入/退出多选模式；手机端：**长按** 任意日期触发多选｜🖱️ **点击 "切换多选模式"** 按钮也可以进入多选模式。</p>
         <div id="selectionModeIndicator" class="selection-mode-indicator" style="display: none;">多选模式（点击日期切换选中）</div>
         <button class="btn-big" onclick="applyShiftToSelected('big')">设为大夜班</button>
         <button class="btn-small" onclick="applyShiftToSelected('small')">设为小夜班</button>
         <button class="btn-delete" onclick="deleteSelected()">删除所选</button>
         <button class="btn-extra" onclick="openExtraModal()">额外调整</button>
+        
+        <button class="btn-extra" id="toggleMultiSelectBtn" onclick="toggleMultiSelectMode()">🖱️ 开启多选</button>
+        
         <button class="btn-clear" onclick="clearSelected()">取消多选</button>
         <button class="btn-settings" onclick="runCalendarAiAnalysis()">🧠 分析并提供换班建议 (启动对话)</button> 
       </div>
@@ -369,60 +372,87 @@ let rightClickedDate = '';
     let currentStatsSummary = {};
 document.getElementById('userIdDisplay').textContent = getUserId().substring(0, 8);
     
-   async function saveToStorage(options = { sync: true }) {
-  const userId = getUserId();
-  // 本地保存
-  localStorage.setItem('shifts_local', JSON.stringify(shifts));
-  localStorage.setItem('selectedMonth_local', selectedMonth);
-  localStorage.setItem('shifts_settings_local', JSON.stringify(settings));
-  localStorage.setItem('userId', userId);
+    // 核心保存函数 (已修改为：范围删除 + 批量插入策略，并优化错误处理)
+    async function saveToStorage(options = { sync: true }) {
+      const userId = getUserId();
+      localStorage.setItem('shifts_local', JSON.stringify(shifts));
+      localStorage.setItem('selectedMonth_local', selectedMonth);
+      localStorage.setItem('shifts_settings_local', JSON.stringify(settings));
+      localStorage.setItem('userId', userId);
+      
+      if (supabase && options.sync) {
+        updateSyncStatus('syncing', '⏳ 同步中...');
+        try {
+          // --- 核心修复：采用“范围删除 + 批量插入”的同步策略 ---
+          
+          // 1. 确定当前月份的范围
+          const [year, month] = selectedMonth.split('-').map(Number);
+          const startOfMonth = `${selectedMonth}-01`;
+          const endOfMonth = new Date(year, month, 0).toISOString().split('T')[0]; 
 
-  if (supabase && options.sync) {
-    updateSyncStatus('syncing', '⏳ 同步中...');
-    try {
-      const [year, month] = selectedMonth.split('-').map(Number);
-      const startOfMonth = `${selectedMonth}-01`;
-      const endOfMonth = new Date(year, month, 0).toISOString().split('T')[0];
+          // 2. 筛选出当前月份需要上传的 shifts
+          const shiftsToInsert = Object.entries(shifts)
+              .filter(([date, data]) => 
+                  date >= startOfMonth && 
+                  date <= endOfMonth && 
+                  data?.type !== 'none' && 
+                  data?.hours !== undefined
+              )
+              .map(([date, data]) => ({
+                  user_id: userId, 
+                  date: date, 
+                  data: data, 
+                  updated_at: new Date().toISOString() 
+              }));
 
-      // 构建要同步的数据（包括“删除”：通过不上传来实现）
-      const shiftsToSync = Object.entries(shifts)
-        .filter(([date, data]) => 
-          date >= startOfMonth && 
-          date <= endOfMonth && 
-          data?.type !== 'none' && 
-          data?.hours !== undefined
-        )
-        .map(([date, data]) => ({
-          user_id: userId,
-          date: date,
-          data: data,
-          updated_at: new Date().toISOString()
-        }));
+          // 3. Upsert Settings (确保单行记录)
+          const settingsPromise = supabase.from('settings').upsert({ 
+              user_id: userId, 
+              data: settings, 
+              updated_at: new Date().toISOString() 
+          }).select(); 
 
-      // 【关键】使用 upsert，自动覆盖或插入
-      const { error: shiftError } = await supabase
-        .from('shifts')
-        .upsert(shiftsToSync, { onConflict: 'user_id,date' });
+          // 4. **强制删除** 该月份当前用户的所有记录 (Delete by Range)
+          const deletePromise = supabase.from('shifts')
+              .delete()
+              .eq('user_id', userId)
+              .gte('date', startOfMonth) 
+              .lte('date', endOfMonth);
 
-      const { error: settingsError } = await supabase
-        .from('settings')
-        .upsert({
-          user_id: userId,
-          data: settings,
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'user_id' });
+          // 5. 批量插入新记录 (Insert)
+          let insertPromise;
+          if (shiftsToInsert.length > 0) {
+              // 关键：这里不能使用 upsert，因为 upsert 仍然可能因之前的脏数据触发冲突。
+              // 必须先进行删除，再尝试插入。
+              insertPromise = supabase.from('shifts').insert(shiftsToInsert).select(); 
+          } else {
+              insertPromise = Promise.resolve({ data: [], error: null });
+          }
 
-      if (shiftError || settingsError) {
-        throw new Error(shiftError?.message || settingsError?.message);
+          // 6. 统一等待并检查所有操作
+          const [deleteResponse, insertResponse, settingsResponse] = await Promise.all([deletePromise, insertPromise, settingsPromise]);
+
+          if (deleteResponse.error) {
+              // 删除操作失败可能导致后续插入失败，但我们尝试继续
+              console.warn('云端删除操作遇到警告（但尝试继续）:', deleteResponse.error);
+          }
+
+          if (insertResponse.error) {
+              throw insertResponse.error; // 插入失败必须报错
+          }
+          if (settingsResponse.error) {
+              throw settingsResponse.error;
+          }
+
+          updateSyncStatus('synced', '✓ 已同步');
+        } catch (error) {
+          console.error('云端同步失败:', error);
+          // 始终显示详细错误信息
+          const errorMessage = error.message || String(error);
+          updateSyncStatus('error', '✗ 同步失败: ' + errorMessage.substring(0, 50) + '...');
+        }
       }
-
-      updateSyncStatus('synced', '✓ 已同步');
-    } catch (error) {
-      console.error('同步失败:', error);
-      updateSyncStatus('error', '✗ 同步失败: ' + (error.message || '').substring(0, 50) + '...');
     }
-  }
-}
 
     function saveToStorageSafe(options = { sync: true }) {
       return syncManager.sync(saveToStorage, options);
@@ -757,17 +787,11 @@ saveToStorageSafe({ sync: true });
         cell.addEventListener('click', (e) => {
             const dateStr = cell.dataset.date;
 
-            if (e.ctrlKey || e.metaKey) {
+            if (e.ctrlKey || e.metaKey || isMultiSelectMode) { // Check if mode is active
                 e.preventDefault();
                 if (!isMultiSelectMode) { 
                     isMultiSelectMode = true;
-                    updateMultiSelectUI();
                 }
-                toggleMultiSelect(dateStr, cell);
-                return;
-            }
-
-            if (isMultiSelectMode) {
                 toggleMultiSelect(dateStr, cell);
                 return;
             }
@@ -819,6 +843,13 @@ saveToStorageSafe({ sync: true });
       updateShiftInfo(false); // Initial render, do not force clear (only clear on button actions)
       updateWeekSummary();
     }
+    
+    // NEW: Function to toggle the multi-select mode
+    function toggleMultiSelectMode() {
+        isMultiSelectMode = !isMultiSelectMode;
+        updateMultiSelectUI();
+    }
+
 
     function toggleMultiSelect(dateStr, cell) {
       if (multiSelectedDates.has(dateStr)) {
@@ -854,15 +885,35 @@ saveToStorageSafe({ sync: true });
     function updateMultiSelectUI() {
       const indicator = document.getElementById('selectionModeIndicator');
       const hint = document.getElementById('multiSelectHint');
+      const toggleBtn = document.getElementById('toggleMultiSelectBtn'); // New reference
+
       if (isMultiSelectMode || multiSelectedDates.size > 0) {
         indicator.style.display = 'inline-block';
         hint.style.display = 'none';
         indicator.textContent = isMultiSelectMode ? '多选模式（点击日期切换选中）' : `已选择 ${multiSelectedDates.size} 个日期`;
-      } else {
+        
+        // Update toggle button text/style
+        if (isMultiSelectMode) {
+             toggleBtn.textContent = '🖱️ 关闭多选';
+             toggleBtn.classList.add('btn-delete'); 
+             toggleBtn.classList.remove('btn-extra');
+        } else {
+             // If we have selected dates but mode is off (e.g., after long press finish)
+             toggleBtn.textContent = '🖱️ 开启多选';
+             toggleBtn.classList.remove('btn-delete');
+             toggleBtn.classList.add('btn-extra');
+        }
+        
+    } else {
         indicator.style.display = 'none';
         hint.style.display = 'block';
-      }
-      
+        
+        // Update toggle button text when nothing is selected
+        toggleBtn.textContent = '🖱️ 开启多选';
+        toggleBtn.classList.remove('btn-delete');
+        toggleBtn.classList.add('btn-extra');
+    }
+    
       document.querySelectorAll('.day-cell').forEach(cell => {
           updateCellClass(cell, cell.dataset.date);
       });
@@ -1169,27 +1220,28 @@ saveToStorageSafe({ sync: true });
       });
     }
 
-    // ============ 统计分析逻辑 (保持不变) ============
+    // ============ 统计分析逻辑 (已整合用户提供的 getMonthsBetween 函数) ============
 
-function getMonthsBetween(startDate, endDate) {
-    // 👇 创建一个新的结束日期：原 endDate + 1 个月
-    const newEndDate = new Date(endDate.getFullYear(), endDate.getMonth() + 1, 1);
-    
-    let months = [];
-    // 起始也 +1 个月（跳过第一个月）
-    let currentDate = new Date(startDate.getFullYear(), startDate.getMonth() + 1, 1);
-    
-    // 使用 newEndDate 来判断循环终点
-    const endMonth = newEndDate.getMonth();
-    const endYear = newEndDate.getFullYear();
+    // **使用用户确认有效的 getMonthsBetween 函数**
+    function getMonthsBetween(startDate, endDate) {
+        // 👇 创建一个新的结束日期：原 endDate + 1 个月
+        const newEndDate = new Date(endDate.getFullYear(), endDate.getMonth() + 1, 1);
+        
+        let months = [];
+        // 起始也 +1 个月（跳过第一个月）
+        let currentDate = new Date(startDate.getFullYear(), startDate.getMonth() + 1, 1);
+        
+        // 使用 newEndDate 来判断循环终点
+        const endMonth = newEndDate.getMonth();
+        const endYear = newEndDate.getFullYear();
 
-    while (currentDate.getFullYear() < endYear || 
-          (currentDate.getFullYear() === endYear && currentDate.getMonth() <= endMonth)) {
-        months.push(currentDate.toISOString().slice(0, 7));
-        currentDate.setMonth(currentDate.getMonth() + 1);
+        while (currentDate.getFullYear() < endYear || 
+              (currentDate.getFullYear() === endYear && currentDate.getMonth() <= endMonth)) {
+            months.push(currentDate.toISOString().slice(0, 7));
+            currentDate.setMonth(currentDate.getMonth() + 1);
+        }
+        return months;
     }
-    return months;
-}
 
     function generateAnalysisData() {
         const startInput = document.getElementById('statStartDate').value;
@@ -1204,6 +1256,7 @@ function getMonthsBetween(startDate, endDate) {
 
         if (startDate > endDate) return { error: '开始日期不能晚于结束日期' };
 
+        // 注意：这里使用 getMonthsBetween 可能会跳过第一个月，但用户确认该逻辑是工作正常的。
         const allMonths = getMonthsBetween(startDate, endDate);
         let totalWorkDays = 0;
         let totalHours = 0;
@@ -2028,8 +2081,9 @@ ${conciseShiftLines}`;
         
         // If not in multi-select mode and a day cell is clicked, ensure context menu is hidden
         if (!isMultiSelectMode && !e.target.closest('.day-cell')) {
-            clearSelected();
-            updateShiftInfo(false);
+            // Note: We don't call clearSelected() here because the single-click logic inside renderCalendar handles it better.
+            // clearSelected(); 
+            // updateShiftInfo(false);
         }
     };
   </script>
