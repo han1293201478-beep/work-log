@@ -1198,18 +1198,25 @@ saveToStorageSafe({ sync: true });
 
     // ============ 统计分析逻辑 (保持不变) ============
 
-    function getMonthsBetween(startDate, endDate) {
-        let months = [];
-        let currentDate = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
-        const endMonth = endDate.getMonth();
-        const endYear = endDate.getFullYear();
+function getMonthsBetween(startDate, endDate) {
+    // 👇 创建一个新的结束日期：原 endDate + 1 个月
+    const newEndDate = new Date(endDate.getFullYear(), endDate.getMonth() + 1, 1);
+    
+    let months = [];
+    // 起始也 +1 个月（跳过第一个月）
+    let currentDate = new Date(startDate.getFullYear(), startDate.getMonth() + 1, 1);
+    
+    // 使用 newEndDate 来判断循环终点
+    const endMonth = newEndDate.getMonth();
+    const endYear = newEndDate.getFullYear();
 
-        while (currentDate.getFullYear() < endYear || (currentDate.getFullYear() === endYear && currentDate.getMonth() <= endMonth)) {
-            months.push(currentDate.toISOString().slice(0, 7));
-            currentDate.setMonth(currentDate.getMonth() + 1);
-        }
-        return months;
+    while (currentDate.getFullYear() < endYear || 
+          (currentDate.getFullYear() === endYear && currentDate.getMonth() <= endMonth)) {
+        months.push(currentDate.toISOString().slice(0, 7));
+        currentDate.setMonth(currentDate.getMonth() + 1);
     }
+    return months;
+}
 
     function generateAnalysisData() {
         const startInput = document.getElementById('statStartDate').value;
