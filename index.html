@@ -488,12 +488,18 @@ margin-top:20px;">
     let isReadOnly = true; 
     let currentAuthMode = 'guest'; 
 
-    let supabase;
+    // 不要使用 let 再次声明，改用 var 或者直接检查 window 对象
+if (!window.supabaseInstance) {
     try {
-      supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        // 使用官方库提供的 window.supabase 创建实例，并赋给一个新名字
+        window.supabaseInstance = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     } catch (e) {
-      console.error('Supabase 初始化失败:', e);
+        console.error('Supabase 初始化失败:', e);
     }
+}
+
+// 为了保证后续代码不报错，定义一个别名
+var supabase = window.supabaseInstance;
 
     let shifts = {};
     let settings = {};
@@ -2419,5 +2425,6 @@ margin-top:20px;">
   </script>
 </body>
 </html>
+
 
 
