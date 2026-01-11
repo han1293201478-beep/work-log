@@ -274,6 +274,13 @@ cursor: pointer; font-weight: bold; }
   </style>
 </head>
 <body>
+
+<div style="margin-top: 10px; display: flex; gap: 10px;">
+    <button onclick="window.location.href='./finance.html'" class="btn" style="background: var(--accent); color: #000; font-weight: bold; border: none; padding: 10px 15px; border-radius: 8px; cursor: pointer;">
+        💰 进入财务画像
+    </button>
+</div>
+
   <div class="container">
     <h1>
       夜班工时合规检查器（AI 对话增强版）
@@ -492,6 +499,7 @@ margin-top:20px;">
     </div>
   </div>
 
+
   <script>
     // ============ Supabase 配置 ============
     const SUPABASE_URL = 'https://morkovixfwdsaknmwavj.supabase.co';
@@ -552,6 +560,7 @@ margin-top:20px;">
       if (!userId) {
         userId = 'user_' + Math.random().toString(36).substr(2, 9);
         localStorage.setItem('userId', userId);
+        localStorage.setItem('adminPasswordHash', hash);
       }
       return userId;
     }
@@ -1970,28 +1979,35 @@ window.addEventListener('DOMContentLoaded', (event) => {
     }
     
     async function saveSettings() {
-      // Read values from UI and update settings object
-      settings.bigMain = parseFloat(document.getElementById('settingBigMain').value) || defaultSettings.bigMain;
-      settings.bigNext = parseFloat(document.getElementById('settingBigNext').value) || defaultSettings.bigNext;
-      settings.small = parseFloat(document.getElementById('settingSmall').value) || defaultSettings.small;
-      settings.limit = parseFloat(document.getElementById('settingLimit').value) || defaultSettings.limit;
-      settings.defaultView = document.getElementById('settingDefaultView').value || defaultSettings.defaultView;
-      // Note: UserId is primarily managed via localStorage and auth logic, setting it here mostly updates the UI
-      localStorage.setItem('userId', document.getElementById('settingUserId').value);
-      
-      settings.aiEndpoint = document.getElementById('settingAiEndpoint').value || defaultSettings.aiEndpoint;
-      settings.aiApiKey = document.getElementById('settingAiApiKey').value || defaultSettings.aiApiKey;
-      settings.aiModel = document.getElementById('settingAiModel').value || defaultSettings.aiModel;
+    // 1. 读取 UI 值到 settings 对象
+    settings.bigMain = parseFloat(document.getElementById('settingBigMain').value) || defaultSettings.bigMain;
+    settings.bigNext = parseFloat(document.getElementById('settingBigNext').value) || defaultSettings.bigNext;
+    settings.small = parseFloat(document.getElementById('settingSmall').value) || defaultSettings.small;
+    settings.limit = parseFloat(document.getElementById('settingLimit').value) || defaultSettings.limit;
+    settings.defaultView = document.getElementById('settingDefaultView').value || defaultSettings.defaultView;
+    
+    const userIdInput = document.getElementById('settingUserId').value;
+    localStorage.setItem('userId', userIdInput);
+    
+    settings.aiEndpoint = document.getElementById('settingAiEndpoint').value || defaultSettings.aiEndpoint;
+    settings.aiApiKey = document.getElementById('settingAiApiKey').value || defaultSettings.aiApiKey;
+    settings.aiModel = document.getElementById('settingAiModel').value || defaultSettings.aiModel;
 
-      // Force save all settings to sync the password hash if it was set during login
-      await saveToStorageSafe({ mode: 'force' }); 
-      
-      currentView = settings.defaultView;
-      switchView(currentView);
-      renderCalendar();
-      alert('✅ 设置已保存并同步到云端。');
+    // --- 【新增补丁开始】 ---
+    // 确保把当前的密码 Hash 也存入本地，供财务页面识别
+    if (settings.auth_hash) {
+        localStorage.setItem('adminPasswordHash', settings.auth_hash);
     }
+    // --- 【新增补丁结束】 ---
 
+    // 2. 强制保存到云端
+    await saveToStorageSafe({ mode: 'force' }); 
+    
+    currentView = settings.defaultView;
+    switchView(currentView);
+    renderCalendar();
+    alert('✅ 设置已保存并同步到云端。');
+}
     async function resetSettings() {
       if (!confirm('确定要恢复所有设置为默认值吗？这将覆盖云端设置！')) return;
       settings = { ...defaultSettings };
