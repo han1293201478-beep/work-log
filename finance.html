@@ -67,11 +67,12 @@
     <div id="edit-panel" class="card" style="display:none;">
         <h3 style="margin-top:0;">✍️ 资产登记</h3>
         
-<label style="font-size:0.8em; color:var(--text-sec);">1. 管理路径 (从下拉菜单选择已有路径进行编辑)</label>
-<div style="display:flex; gap:10px; margin: 8px 0 5px 0;">
-    <select id="path-ref-selector" class="input-style" style="margin:0; flex:1;" onchange="fillPathFromRef()">
-        <option value="">-- 选择已有路径快速填入 --</option>
+<label style="font-size:0.8em; color:var(--text-sec);">2. 选择账户添加或修改</label>
+<div style="display:flex; gap:10px; margin-bottom: 10px;">
+    <select id="path-selector" class="input-style" style="margin:0; flex:1;">
+        <option value="">-- 加载中 --</option>
     </select>
+    <button class="btn btn-outline" style="width:80px; border-color:var(--danger); color:var(--danger);" onclick="deleteCurrentPath()">删除</button>
 </div>
 <div style="display:flex; gap:10px; margin-bottom:15px;">
     <input type="text" id="new-path" class="input-style" style="margin:0;" placeholder="在这里编辑名称">
@@ -81,10 +82,24 @@
     </div>
 </div>
 
-<label style="font-size:0.8em; color:var(--text-sec);">2. 选择账户并记录余额 (支持搜索)</label>
-<div style="display:flex; gap:10px; margin-bottom: 10px;">
-    <input list="path-list" id="path-selector" class="input-style" style="margin:0;" placeholder="搜索或选择已有路径...">
-    <datalist id="path-list"></datalist>
+<label style="font-size:0.8em; color:var(--text-sec);">3. 标记生活维度</label>
+<select id="tag-selector" class="input-style">
+    <option value="未分类">-- 选择分类 (可选) --</option>
+    <option value="餐饮">🍔 餐饮</option>
+    <option value="玩乐">🎮 玩乐</option>
+    <option value="交通">🚗 交通</option>
+    <option value="购物">🛍️ 购物</option>
+    <option value="工资">💰 工资</option>
+    <option value="投资">📈 投资</option>
+    <option value="原始数据">🔘 原始数据</option>
+    </option><option value="none">其他 </option>
+</select>
+
+<label style="font-size:0.8em; color:var(--text-sec);">4. 选择账户并记录余额</label>
+<div style="display:flex; gap:10px; margin: 8px 0 5px 0;">
+    <select id="path-ref-selector" class="input-style" style="margin:0; flex:1;" onchange="fillPathFromRef()">
+        <option value="">-- 选择已有路径快速填入 --</option>
+    </select>
     <button class="btn btn-outline" style="width:80px; border-color:var(--danger); color:var(--danger);" onclick="deleteCurrentPath()">删除</button>
 </div>
 
@@ -93,19 +108,111 @@
         <button class="btn" onclick="submitFinance()">永久存入云端</button>
     </div>
 
+<div style="text-align: right; margin-top: 10px;">
+    <button class="btn btn-outline" style="width: auto; padding: 4px 12px; font-size: 0.75em; border-color: var(--accent); color: var(--accent);" onclick="openAiChat()">
+        💬 咨询 AI 助理
+    </button>
+</div>
+
+<div id="edit-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:2000; backdrop-filter: blur(5px);">
+    <div style="max-width:400px; margin: 80px auto; background:var(--bg-card); padding:20px; border-radius:16px; border:1px solid var(--border);">
+        <h3 style="margin-top:0; color:var(--accent);">📝 修改记录</h3>
+        <input type="hidden" id="edit-id">
+        <label style="font-size:0.8em;">分类标签</label>
+        <select id="edit-tag" class="input-style">
+            <option value="餐饮">🍔 餐饮</option><option value="玩乐">🎮 玩乐</option>
+            <option value="交通">🚗 交通</option><option value="购物">🛍️ 购物</option>
+            <option value="工资">💰 工资</option><option value="投资">📈 投资</option>
+<option value="原始数据">🔘 原始数据</option><option value="none">其他 </option>
+        </select>
+        <label style="font-size:0.8em;">金额</label>
+        <input type="number" id="edit-amount" class="input-style">
+        <label style="font-size:0.8em;">备注</label>
+        <input type="text" id="edit-remark" class="input-style">
+        <div style="display:flex; gap:10px; margin-top:20px;">
+            <button class="btn" style="background:#444;" onclick="closeEditModal()">取消</button>
+            <button class="btn" onclick="saveEdit()">更新并保存</button>
+        </div>
+    </div>
+</div>
+
+<div id="ai-chat-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:1000; backdrop-filter: blur(8px);">
+    <div style="max-width:500px; margin: 40px auto; background:#1e1e1e; border:1px solid #333; border-radius:16px; height: 80vh; display:flex; flex-direction:column; overflow:hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+        
+        <div style="padding:15px; border-bottom:1px solid #333; display:flex; justify-content:space-between; align-items:center;">
+            <div style="display:flex; align-items:center; gap:8px;">
+                <span style="color:var(--accent); font-weight:bold;">🤖 财务 AI 助理</span>
+                <span id="data-status" style="font-size:10px; color:#666;">(未同步数据)</span>
+            </div>
+            <span onclick="closeAiChat()" style="cursor:pointer; color:#888; font-size:20px;">&times;</span>
+        </div>
+
+        <div id="chat-config-area" style="padding:10px; background:rgba(138, 180, 248, 0.05); border-bottom:1px solid #333;">
+            <div style="display:flex; gap:8px; align-items:center;">
+                <input type="date" id="ai-date-start" class="input-style" style="margin:0; font-size:11px; padding:4px;">
+                <span style="color:#666;">至</span>
+                <input type="date" id="ai-date-end" class="input-style" style="margin:0; font-size:11px; padding:4px;">
+                <button class="btn" style="width:70px; font-size:11px; padding:4px;" onclick="resetAiSession()">重置上下文</button>
+            </div>
+            <div style="font-size:9px; color:#666; margin-top:5px;">* 修改日期后请点击“重置”以重新同步账目</div>
+        </div>
+
+<div style="display:flex; gap:10px; margin-top:8px; border-top:1px solid #333; padding-top:8px;">
+    <button class="btn btn-outline" style="flex:1; font-size:11px; padding:4px;" onclick="switchAiMode('chat')">💬 自由对话</button>
+    <button class="btn btn-outline" style="flex:1; font-size:11px; padding:4px; border-color:#ffa940; color:#ffa940;" onclick="startAiAutoCategory()">🏷️ AI 自动分类</button>
+</div>
+
+        <div id="chat-history" style="flex:1; overflow-y:auto; padding:15px; display:flex; flex-direction:column; gap:12px;">
+            <div style="align-self: flex-start; background:#2a2a2a; padding:10px; border-radius:0 12px 12px 12px; font-size:0.9em; max-width:85%;">
+                你好！我是你的私人财务审计。请设置好上方日期，然后直接提问。
+            </div>
+        </div>
+
+        <div style="padding:15px; border-top:1px solid #333; display:flex; gap:8px; background:#1a1a1a;">
+            <input type="text" id="user-query" class="input-style" style="margin:0; flex:1;" placeholder="输入你的问题..." onkeypress="if(event.keyCode==13) askAiAssistant()">
+            <button class="btn" style="width:60px;" onclick="askAiAssistant()">发送</button>
+        </div>
+    </div>
+</div>
+
     <div class="card">
         <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:15px;">
             <div>
                 <div style="font-size:0.85em; color:var(--text-sec);">当前总计估值</div>
                 <h2 id="total-val" style="margin:5px 0 0 0; color:var(--accent);">￥0.00</h2>
             </div>
+
             <button class="btn btn-outline" style="width:70px; padding:5px; font-size:0.8em;" onclick="refreshData()">刷新</button>
         </div>
+<div style="display: flex; justify-content: space-between; margin-bottom: 15px; gap: 10px;">
+    <div style="display: flex; background: #222; border-radius: 8px; padding: 4px;">
+        <button onclick="state.viewMode='path'; refreshData()" id="btn-view-path" style="padding: 5px 15px; border: none; border-radius: 6px; cursor: pointer;">按账户</button>
+        <button onclick="state.viewMode='tag'; refreshData()" id="btn-view-tag" style="padding: 5px 15px; border: none; border-radius: 6px; cursor: pointer;">按分类</button>
+    </div>
+    <button onclick="toggleBatchMode()" id="btn-batch" style="background: var(--accent); color: #000; border: none; border-radius: 8px; padding: 5px 15px; font-weight: bold; cursor: pointer;">批量修改</button>
+</div>
+
+<div id="batch-panel" style="display:none; background: #2a2a2a; padding: 15px; border-radius: 12px; margin-bottom: 15px; border: 1px solid var(--accent);">
+    <div style="font-size: 14px; margin-bottom: 10px;">已选择 <span id="select-count" style="color:var(--accent)">0</span> 项</div>
+    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+<select id="batch-new-tag" style="flex:1; padding: 8px; border-radius: 4px; border: 1px solid #444; background: #111; color: #fff;">
+            <option value="">-- 选择新分类 --</option>
+<option value="餐饮">🍔 餐饮</option><option value="玩乐">🎮 玩乐</option>
+            <option value="交通">🚗 交通</option><option value="购物">🛍️ 购物</option>
+            <option value="工资">💰 工资</option><option value="投资">📈 投资</option>
+<option value="原始数据">🔘 原始数据</option><option value="none">其他 </option>
+        </select>
+        <button onclick="applyBatchUpdate()" style="background: var(--accent); color: #000; border: none; padding: 8px 20px; border-radius: 6px; font-weight: bold; cursor: pointer;">确认上传</button>
+        <button onclick="toggleBatchMode()" style="background: #444; border:none; color:#ccc; padding: 8px 15px; border-radius: 4px; cursor: pointer;">取消</button>
+    </div>
+</div>
         <div id="finance-list-container" style="min-height: 100px;">
             数据同步中...
         </div>
     </div>
 </div>
+
+
 
 <script>
     // --- 配置区 ---
@@ -118,7 +225,9 @@
     let state = {
         userId: '',
         isEditMode: false,
-        paths: JSON.parse(localStorage.getItem('finance_paths') || '["支付宝/余额", "微信/零钱", "银行卡/工资卡"]')
+        paths: JSON.parse(localStorage.getItem('finance_paths') || '["支付宝/余额", "微信/零钱", "银行卡/工资卡"]'),
+viewMode: 'path', // 'path' 或 'tag'
+    selectedIds: []   // 存储批量选择的 ID
     };
 
     // --- 加密逻辑 ---
@@ -425,128 +534,231 @@ async function parseSmartInput() {
     async function submitFinance() {
     const path = document.getElementById('path-selector').value;
     const amt = parseFloat(document.getElementById('amount-input').value);
-    const remark = document.getElementById('remark-input').value.trim(); // 获取备注
+    const remark = document.getElementById('remark-input').value.trim();
+    const tag = document.getElementById('tag-selector').value;
 
     if (isNaN(amt)) return alert("请输入有效金额");
 
     const { error } = await db.from('finance_records').insert([
-        { 
-            user_id: state.userId, 
-            category_path: path, 
-            amount: amt,
-            remark: remark // 将备注写入数据库
-        }
+        { user_id: state.userId, category_path: path, amount: amt, remark: remark, category_tag: tag }
     ]);
 
-    if (error) alert("写入云端失败: " + error.message);
+    if (error) alert("写入失败: " + error.message);
     else {
         document.getElementById('amount-input').value = '';
-        document.getElementById('remark-input').value = ''; // 清空备注栏
+        document.getElementById('remark-input').value = '';
         refreshData();
     }
 }
 
 async function refreshData() {
-    if (!state.userId) {
-        document.getElementById('finance-list-container').innerHTML = "请输入 User ID 查看数据";
-        return;
+    const listContainer = document.getElementById('finance-list-container');
+    if (!listContainer) return;
+
+    // 更新视图按钮高亮样式 (保持状态)
+    const pathBtn = document.getElementById('btn-view-path');
+    const tagBtn = document.getElementById('btn-view-tag');
+    if(pathBtn && tagBtn) {
+        pathBtn.style.background = state.viewMode === 'path' ? '#444' : 'transparent';
+        tagBtn.style.background = state.viewMode === 'tag' ? '#444' : 'transparent';
     }
 
+    listContainer.innerHTML = '<div style="text-align:center; padding:20px;">数据同步中...</div>';
+
     try {
-        const { data, error } = await db.from('finance_records')
+        const { data: records, error } = await db.from('finance_records')
             .select('*')
             .eq('user_id', state.userId)
             .order('record_date', { ascending: false });
 
         if (error) throw error;
 
-        // --- 数据处理：按路径累计金额 ---
-        const summary = {}; 
-        const details = {}; 
-
-        data.forEach(item => {
-            const path = item.category_path;
-            if (summary[path] === undefined) {
-                summary[path] = 0;
-                details[path] = [];
-            }
-            summary[path] += item.amount;
-            details[path].push(item);
-        });
-
-        const listContainer = document.getElementById('finance-list-container');
-        listContainer.innerHTML = '';
-        let total = 0;
-const keys = Object.keys(summary).sort();
-        if (keys.length === 0) {
-            listContainer.innerHTML = '<div style="color:#666; text-align:center; padding:20px;">暂无资产记录</div>';
-            document.getElementById('total-val').innerText = "￥0.00";
-            return;
-        }
-
-        // --- 新增：大类分组逻辑 ---
+        // 1. 数据分组逻辑
         const groups = {};
-        keys.forEach(path => {
-            const root = path.split('/')[0]; // 获取一级分类，如“支付宝”
-            if (!groups[root]) groups[root] = [];
-            groups[root].push(path);
+        let totalBalance = 0;
+        records.forEach(r => {
+            totalBalance += r.amount;
+            const groupKey = state.viewMode === 'tag' ? (r.category_tag || '未分类') : (r.category_path || '默认');
+            if (!groups[groupKey]) groups[groupKey] = { total: 0, items: [] };
+            groups[groupKey].total += r.amount;
+            groups[groupKey].items.push(r);
         });
 
-        // 遍历分组进行渲染
-        Object.keys(groups).sort().forEach(root => {
-            const groupCard = document.createElement('div');
-            groupCard.style.cssText = "background:rgba(255,255,255,0.02); border:1px solid var(--border); border-radius:12px; padding:15px; margin-bottom:15px;";
-            
-            let groupTotal = 0;
-            // 构建子项 HTML
-            const itemsHtml = groups[root].map(path => {
-                const amount = summary[path];
-                groupTotal += amount;
-                const safeId = btoa(encodeURIComponent(path)).replace(/=/g, '');
-                
-                return `
-                    <div class="list-item" onclick="toggleDetails('${safeId}')" style="cursor:pointer; padding:10px 0; border-bottom:1px solid #222;">
-                        <div style="font-size:0.9em;">${path.includes('/') ? path.split('/').slice(1).join(' > ') : path}</div>
-                        <div style="font-family:monospace; font-weight:bold; color:${amount >= 0 ? 'var(--accent)' : 'var(--danger)'}">
-                            ￥${amount.toLocaleString(undefined, {minimumFractionDigits: 2})}
-                        </div>
-                    </div>
-                    <div id="details-${safeId}" style="display:none; background:rgba(0,0,0,0.3); padding:8px; border-radius:8px; margin:5px 0;">
-                        ${details[path].map(r => `
-                            <div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid #333; font-size:0.85em;">
-                                <div style="color:var(--text-sec);">
-                                    <div>${r.record_date ? new Date(r.record_date).toLocaleDateString() : '历史记录'}</div>
-                                    <div style="color:#eee; cursor:pointer; text-decoration:underline;" 
-     onclick="updateRemark(${r.id}, '${r.remark || ''}')">
-     ${r.remark || '无备注(点击修改)'}
-</div>
-                                </div>
-                                <div style="text-align:right;">
-                                    <div style="font-weight:bold; color:${r.amount >= 0 ? '#fff' : 'var(--danger)'}">￥${r.amount.toLocaleString()}</div>
-                                    ${state.isEditMode ? `<span class="del-btn" style="font-size:10px; margin-top:4px; display:inline-block;" onclick="deleteRecord(${r.id})">删除</span>` : ''}
-                                </div>
-                            </div>
-                        `).join('')}
-                    </div>
-                `;
-            }).join('');
+        listContainer.innerHTML = '';
 
-            groupCard.innerHTML = `
-                <div style="display:flex; justify-content:space-between; font-weight:bold; color:var(--accent); padding-bottom:10px; border-bottom:1px solid var(--border); margin-bottom:5px;">
-                    <span>📁 ${root}</span>
-                    <span>￥${groupTotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
-                </div>
-                ${itemsHtml}
-            `;
+        // 2. 开始渲染分组
+        Object.keys(groups).sort().forEach(key => {
+            const group = groups[key];
+            const groupCard = document.createElement('div');
+            groupCard.style.cssText = "background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:12px; padding:15px; margin-bottom:15px;";
+            
+            // 分组标题
+            const header = document.createElement('div');
+            header.style.cssText = "display:flex; justify-content:space-between; font-weight:bold; color:var(--accent); margin-bottom:10px; border-bottom:1px solid #333; padding-bottom:8px;";
+            header.innerHTML = `<span>${state.viewMode === 'tag' ? '🏷️' : '📁'} ${key}</span><span>￥${group.total.toLocaleString()}</span>`;
+            groupCard.appendChild(header);
+
+            // 3. 核心：遍历 group.items 渲染每一行
+            group.items.forEach(r => {
+                const row = document.createElement('div');
+                row.className = "record-row";
+                // 这里的 data-id 很重要，批量修改要用到
+                row.setAttribute('data-id', r.id); 
+                row.style.cssText = "display:flex; align-items:center; padding:10px 0; border-bottom:1px solid #222; cursor:pointer; transition: background 0.2s;";
+
+                // 找到 refreshData 里的这一段并替换
+row.innerHTML = `
+    <div class="batch-checkbox-container" style="display: ${state.isBatchMode ? 'block' : 'none'}; margin-right:12px;">
+        <input type="checkbox" class="record-checkbox" ${state.selectedIds.includes(r.id) ? 'checked' : ''} onclick="event.stopPropagation()">
+    </div>
+    <div style="flex:1;">
+        <div style="font-size:0.8em; color:var(--text-sec);">${r.record_date || '历史'}</div>
+        <div style="color:#eee; font-size:0.95em;">${r.remark || '<span style="color:#444">无备注</span>'}</div>
+    </div>
+    <div style="text-align:right; display:flex; flex-direction:column; align-items:flex-end; gap:4px;">
+        <div style="font-weight:bold; color:${r.amount >= 0 ? 'var(--accent)' : 'var(--danger)'}">
+            ￥${r.amount.toLocaleString()}
+        </div>
+        <div style="display:flex; align-items:center; gap:8px;">
+            <span style="font-size:10px; color:#666;">
+                ${state.viewMode === 'tag' ? r.category_path : (r.category_tag || '未分类')}
+            </span>
+            <span class="del-btn" 
+                  style="font-size: 10px; padding: 1px 4px; border-color: #444; color: #666;" 
+                  onclick="event.stopPropagation(); deleteRecord(${r.id})">
+                删除
+            </span>
+        </div>
+    </div>
+`;
+
+                // 4. 行点击事件逻辑切换
+                row.onclick = () => {
+                    if (state.isBatchMode) {
+                        // 批量模式：点击行即勾选
+                        const cb = row.querySelector('.record-checkbox');
+                        cb.checked = !cb.checked;
+                        handleRowSelect(r.id, cb.checked, row);
+                    } else {
+                        // 普通模式：点击行打开编辑弹窗
+                        openEditModal(r);
+                    }
+                };
+                
+                groupCard.appendChild(row);
+            });
+
             listContainer.appendChild(groupCard);
         });
 
-        document.getElementById('total-val').innerText = `￥${total.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+        // 更新总金额
+        const totalValEl = document.getElementById('total-val');
+        if(totalValEl) totalValEl.innerText = `￥${totalBalance.toLocaleString()}`;
 
     } catch (err) {
-        console.error("刷新失败:", err);
-        document.getElementById('finance-list-container').innerHTML = "数据同步失败，请刷新页面";
+        console.error(err);
+        listContainer.innerHTML = '<div style="color:red">加载失败，请检查网络</div>';
     }
+}
+
+// 辅助函数：处理选择逻辑（不触发 refreshData，所以不卡顿）
+function handleRowSelect(id, isChecked, rowElement) {
+    if (isChecked) {
+        if (!state.selectedIds.includes(id)) state.selectedIds.push(id);
+        rowElement.style.background = "rgba(138, 180, 248, 0.1)";
+    } else {
+        state.selectedIds = state.selectedIds.filter(sid => sid !== id);
+        rowElement.style.background = "transparent";
+    }
+    // 实时更新计数
+    const countEl = document.getElementById('select-count');
+    if(countEl) countEl.innerText = state.selectedIds.length;
+}
+
+// --- 对话式 AI 状态控制 ---
+let chatContext = {
+    recordsLoaded: false,
+    dataSummary: "",
+    messages: [] // 存储对话历史实现多轮对话
+};
+
+function openAiChat() { document.getElementById('ai-chat-modal').style.display = 'block'; }
+function closeAiChat() { document.getElementById('ai-chat-modal').style.display = 'none'; }
+
+// 重置对话和数据
+function resetAiSession() {
+    chatContext = { recordsLoaded: false, dataSummary: "", messages: [] };
+    document.getElementById('chat-history').innerHTML = `<div style="align-self: flex-start; background:#2a2a2a; padding:10px; border-radius:0 12px 12px 12px; font-size:0.9em; max-width:85%;">会话已重置。请重新提问，我将同步最新日期范围的数据。</div>`;
+    document.getElementById('data-status').innerText = "(待同步)";
+}
+
+async function askAiAssistant() {
+    const start = document.getElementById('ai-date-start').value;
+    const end = document.getElementById('ai-date-end').value;
+    const query = document.getElementById('user-query').value.trim();
+    const history = document.getElementById('chat-history');
+
+    if (!query) return;
+    if (!start || !end) return alert("请先指定日期范围以便 AI 调取数据");
+
+    // 1. UI 显示用户问题
+    history.innerHTML += `<div style="align-self: flex-end; background:var(--accent); color:#000; padding:10px; border-radius:12px 12px 0 12px; font-size:0.9em; max-width:85%;">${query}</div>`;
+    document.getElementById('user-query').value = '';
+    history.scrollTop = history.scrollHeight;
+
+    const loadingId = 'ai-loading-' + Date.now();
+    history.innerHTML += `<div id="${loadingId}" style="align-self: flex-start; background:#2a2a2a; padding:10px; border-radius:0 12px 12px 12px; font-size:0.9em; max-width:85%;">正在思考...</div>`;
+
+    try {
+        // 2. 如果是本轮对话第一次提问，则加载数据
+        if (!chatContext.recordsLoaded) {
+            document.getElementById(loadingId).innerText = "正在调取账目数据并分析...";
+            const { data: records } = await db.from('finance_records')
+                .select('category_path, amount, remark, record_date')
+                .eq('user_id', state.userId)
+                .gte('record_date', `${start}T00:00:00`)
+                .lte('record_date', `${end}T23:59:59`);
+            
+            chatContext.dataSummary = records.map(r => `[${r.record_date.slice(5,10)}] ${r.category_path}: ${r.amount} (${r.remark || ''})`).join('\n');
+            chatContext.recordsLoaded = true;
+            document.getElementById('data-status').innerText = `(已同步 ${records.length} 条记录)`;
+        }
+
+        // 3. 获取 AI 配置
+        const { data: setRes } = await db.from('settings').select('data').eq('user_id', state.userId);
+        const aiConfig = typeof setRes[0].data === 'string' ? JSON.parse(setRes[0].data) : setRes[0].data;
+
+        // 4. 构建消息（只在第一条消息中包含原始数据，后续只带历史对话）
+        if (chatContext.messages.length === 0) {
+            chatContext.messages.push({ 
+                role: "system", 
+                content: `你是私人财务助理。这是用户从 ${start} 到 ${end} 的流水记录：\n${chatContext.dataSummary}\n请基于此数据回答后续问题。` 
+            });
+        }
+        chatContext.messages.push({ role: "user", content: query });
+
+        // 5. 调用 AI
+        const response = await fetch(aiConfig.aiEndpoint, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${aiConfig.aiApiKey}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                model: aiConfig.aiModel,
+                messages: chatContext.messages,
+                temperature: 0.5
+            })
+        });
+
+        const resData = await response.json();
+        const aiMsg = resData.choices[0].message.content;
+        
+        // 保存 AI 回复到上下文
+        chatContext.messages.push({ role: "assistant", content: aiMsg });
+        document.getElementById(loadingId).innerText = aiMsg;
+
+    } catch (err) {
+        document.getElementById(loadingId).innerText = "❌ 错误: " + err.message;
+    }
+    history.scrollTop = history.scrollHeight;
 }
 
 // 展开/收起函数
@@ -574,6 +786,228 @@ async function updateRemark(id, oldRemark) {
 
     if (error) alert("更新失败: " + error.message);
     else refreshData();
+}
+
+// --- AI 弹窗控制 ---
+function openAiModal() {
+    document.getElementById('ai-modal').style.display = 'block';
+}
+
+function closeAiModal() {
+    document.getElementById('ai-modal').style.display = 'none';
+}
+
+// --- AI 自动分类核心逻辑 ---
+let pendingUpdates = []; // 暂存 AI 建议的修改
+
+async function startAiAutoCategory() {
+    const start = document.getElementById('ai-date-start').value;
+    const end = document.getElementById('ai-date-end').value;
+    const history = document.getElementById('chat-history');
+
+    if (!start || !end) return alert("请先选择要分类的时间段");
+
+    history.innerHTML = `<div style="color:var(--accent); font-size:0.9em;">正在扫描 [${start}] 至 [${end}] 的流水...</div>`;
+    
+    try {
+        // 1. 获取流水
+        const { data: records } = await db.from('finance_records')
+            .select('id, category_path, amount, remark, record_date')
+            .eq('user_id', state.userId)
+            .gte('record_date', `${start}T00:00:00`)
+            .lte('record_date', `${end}T23:59:59`);
+
+        if (!records || records.length === 0) {
+            history.innerHTML += `<div>该时段无数据。</div>`;
+            return;
+        }
+
+        // 2. 获取 AI 配置
+        const { data: setRes } = await db.from('settings').select('data').eq('user_id', state.userId);
+        const aiConfig = typeof setRes[0].data === 'string' ? JSON.parse(setRes[0].data) : setRes[0].data;
+
+        // 3. 请求 AI 进行分类建议
+        history.innerHTML += `<div style="color:#888; font-size:0.8em;">AI 正在根据备注拟定分类清单...</div>`;
+        
+        const prompt = `你是一个财务对账员。请根据以下流水，为每条记录输出一个简洁的二级分类（如：餐饮、交通、购物、娱乐、工资、投资、其他）。
+        格式要求：只返回 JSON 数组，格式为 [{"id":记录ID, "suggested": "新分类名称"}]
+        
+        流水数据：\n${records.map(r => `ID:${r.id}, 路径:${r.category_path}, 金额:${r.amount}, 备注:${r.remark}`).join('\n')}`;
+
+        const response = await fetch(aiConfig.aiEndpoint, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${aiConfig.aiApiKey}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                model: aiConfig.aiModel,
+                messages: [{ role: "system", content: "你只负责输出纯JSON格式的分类建议。" }, { role: "user", content: prompt }],
+                temperature: 0.2
+            })
+        });
+
+        const resData = await response.json();
+        const suggestions = JSON.parse(resData.choices[0].message.content);
+        pendingUpdates = suggestions;
+
+        // 4. 渲染预览界面
+        let previewHtml = `<div style="background:#2a2a2a; padding:10px; border-radius:8px; margin-top:10px;">
+            <b style="font-size:0.9em; color:var(--accent);">检查 AI 分类建议：</b><br><br>`;
+        
+        suggestions.forEach(s => {
+            const original = records.find(r => r.id === s.id);
+            previewHtml += `<div style="font-size:0.8em; margin-bottom:5px; border-bottom:1px solid #444; padding-bottom:3px;">
+                <span style="color:#888;">${original.remark || '无备注'}</span> ➡️ <b style="color:#ffa940;">${s.suggested}</b> (￥${original.amount})
+            </div>`;
+        });
+
+        previewHtml += `<button class="btn" style="margin-top:10px;" onclick="commitAiCategories()">确认并存入云端</button></div>`;
+        history.innerHTML = previewHtml;
+
+    } catch (err) {
+        history.innerHTML = `<div style="color:var(--danger);">分析失败: ${err.message}</div>`;
+    }
+}
+
+// 批量存入云端
+async function commitAiCategories() {
+    if (!confirm(`确定要更新这 ${pendingUpdates.length} 条记录的分类吗？`)) return;
+
+    try {
+        for (const update of pendingUpdates) {
+            await db.from('finance_records')
+                .update({ category_tag: update.suggested }) // 直接写入独立字段
+                .eq('id', update.id);
+        }
+        alert("✅ AI 批量分类存入成功！");
+        resetAiSession();
+        refreshData(); 
+    } catch (err) {
+        alert("更新过程出错: " + err.message);
+    }
+}
+
+// 3. 弹窗控制函数
+function openEditModal(r) {
+    document.getElementById('edit-id').value = r.id;
+    document.getElementById('edit-tag').value = r.category_tag || '餐饮';
+    document.getElementById('edit-amount').value = r.amount;
+    document.getElementById('edit-remark').value = r.remark || '';
+    document.getElementById('edit-modal').style.display = 'block';
+}
+function closeEditModal() { document.getElementById('edit-modal').style.display = 'none'; }
+function openAiChat() { document.getElementById('ai-chat-modal').style.display = 'block'; }
+function closeAiChat() { document.getElementById('ai-chat-modal').style.display = 'none'; }
+
+// 4. 保存修改
+async function saveEdit() {
+    const id = document.getElementById('edit-id').value;
+    const tag = document.getElementById('edit-tag').value;
+    const amt = parseFloat(document.getElementById('edit-amount').value);
+    const rem = document.getElementById('edit-remark').value;
+
+    if (!id) return alert("记录 ID 丢失");
+
+    try {
+        const { error } = await db.from('finance_records').update({
+            category_tag: tag, // 确保对应数据库中的 category_tag 字段
+            amount: amt,
+            remark: rem
+        }).eq('id', id);
+
+        if (error) throw error;
+        
+        alert("✅ 修改已同步至云端");
+        closeEditModal();
+        await refreshData(); // 必须 await 确保数据刷新
+    } catch (err) {
+        console.error("提交失败:", err);
+        alert("修改失败: " + err.message);
+    }
+}
+
+// 切换批量模式
+function toggleBatchMode() {
+    state.isBatchMode = !state.isBatchMode;
+    state.selectedIds = []; // 清空选中
+    
+    const panel = document.getElementById('batch-panel');
+    const btn = document.getElementById('btn-batch');
+    const countEl = document.getElementById('select-count');
+    
+    // 切换面板显示
+    panel.style.display = state.isBatchMode ? 'block' : 'none';
+    btn.innerText = state.isBatchMode ? '退出批量' : '批量修改';
+    if(countEl) countEl.innerText = "0";
+
+    // 关键：通过 CSS 类名控制所有复选框的显示/隐藏，不重新加载数据
+    const allCheckboxes = document.querySelectorAll('.batch-checkbox-container');
+    allCheckboxes.forEach(el => {
+        el.style.display = state.isBatchMode ? 'block' : 'none';
+    });
+
+    // 重置所有复选框状态
+    document.querySelectorAll('.record-checkbox').forEach(cb => {
+        cb.checked = false;
+        // 移除行高亮
+        cb.closest('.record-row').style.background = "transparent";
+    });
+}
+
+// 选择/反选记录
+function toggleSelect(id, isChecked) {
+    if (isChecked) {
+        if (!state.selectedIds.includes(id)) state.selectedIds.push(id);
+    } else {
+        const index = state.selectedIds.indexOf(id);
+        if (index > -1) state.selectedIds.splice(index, 1);
+    }
+    // 强制实时更新页面上的数字
+    const countEl = document.getElementById('select-count');
+    if (countEl) countEl.innerText = state.selectedIds.length;
+}
+
+
+// 执行批量更新并上传到 Supabase
+async function applyBatchUpdate() {
+    const selectEl = document.getElementById('batch-new-tag');
+    const newTag = selectEl.value;
+    
+    if (!newTag) return alert("请先选择一个目标分类！");
+    if (state.selectedIds.length === 0) return alert("请先勾选记录！");
+    if (!confirm(`确定将这 ${state.selectedIds.length} 条记录修改为 [${newTag}] 吗？`)) return;
+
+    // --- 修改这里：更安全的按钮获取方式 ---
+    // 我们直接通过 ID 找面板，再找里面的 button
+    const panel = document.getElementById('batch-panel');
+    const btn = panel ? panel.querySelector('button[onclick^="applyBatchUpdate"]') : null;
+    const originalText = btn ? btn.innerText : "确认上传修改";
+
+    try {
+        if (btn) {
+            btn.innerText = "正在上传...";
+            btn.disabled = true;
+        }
+
+        const { error } = await db.from('finance_records')
+            .update({ category_tag: newTag })
+            .in('id', state.selectedIds);
+
+        if (error) throw error;
+
+        alert(`✅ 成功！云端已更新 ${state.selectedIds.length} 条数据`);
+        
+        state.selectedIds = [];
+        toggleBatchMode(); 
+        await refreshData(); 
+    } catch (err) {
+        console.error("批量上传出错:", err);
+        alert("上传失败: " + err.message);
+    } finally {
+        // --- 修改这里：恢复状态 ---
+        if (btn) {
+            btn.innerText = originalText;
+            btn.disabled = false;
+        }
+    }
 }
 
     window.onload = init;
