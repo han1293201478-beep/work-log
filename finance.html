@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>我的财务资产画像 - 长期档案</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+
+.list-item-container { border-bottom: 1px solid var(--border); }
+.list-item { display: flex; justify-content: space-between; align-items: center; padding: 15px 0; }
+
+        :root {
+            --bg-main: #121212; --bg-card: #1e1e1e; --text-primary: #e0e0e0;
+            --text-sec: #a0a0a0; --accent: #8ab4f8; --border: #333333; --danger: #ff4d4f;
+        }
+        body { background: var(--bg-main); color: var(--text-primary); font-family: -apple-system, sans-serif; padding: 20px; margin: 0; }
+        .container { max-width: 600px; margin: 0 auto; }
+        .card { background: var(--bg-card); border-radius: 12px; padding: 20px; border: 1px solid var(--border); margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
+        .input-style { width: 100%; padding: 12px; background: #2a2a2a; border: 1px solid var(--border); color: white; border-radius: 8px; box-sizing: border-box; margin-bottom: 10px; font-size: 16px; }
+        .btn { background: var(--accent); color: #121212; border: none; padding: 12px; border-radius: 8px; width: 100%; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        .btn:active { transform: scale(0.98); opacity: 0.8; }
+        .btn-outline { background: none; border: 1px solid var(--accent); color: var(--accent); }
+        nav { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding: 10px; background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border); }
+        .list-item { display: flex; justify-content: space-between; align-items: center; padding: 15px 0; border-bottom: 1px solid var(--border); }
+        .del-btn { color: var(--danger); cursor: pointer; font-size: 0.75em; padding: 2px 6px; border: 1px solid var(--danger); border-radius: 4px; transition: 0.2s; }
+        .del-btn:hover { background: var(--danger); color: white; }
+        .status-tag { padding: 4px 10px; border-radius: 20px; font-size: 0.75em; font-weight: bold; }
+        .tag-readonly { background: #444; color: #aaa; }
+        .tag-edit { background: #1b5e20; color: #fff; }
+        select { appearance: none; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <nav>
+        <span style="font-weight:bold; color:var(--accent);">💰 资产画像</span>
+        <div style="display:flex; gap:12px; align-items:center;">
+            <span id="auth-status-tag" class="status-tag tag-readonly">只读</span>
+            <button onclick="logout()" style="background:none; border:1px solid #666; color:#888; cursor:pointer; border-radius:4px; font-size:0.8em; padding:2px 5px;">退出</button>
+            <a href="./index.html" style="color:var(--text-sec); text-decoration:none; font-size:0.9em;">📅 返回班表</a>
+        </div>
+    </nav>
+
+    <div id="login-panel" class="card">
+        <h3 style="margin-top:0;">🔐 身份验证</h3>
+        <input type="text" id="user-id-input" class="input-style" placeholder="输入 User ID">
+        <input type="password" id="pwd-input" class="input-style" placeholder="输入管理员密码">
+        <button class="btn" onclick="manualAuth()">解锁编辑权限</button>
+    </div>
+
+<div style="background: rgba(138, 180, 248, 0.1); padding: 15px; border-radius: 8px; border: 1px dashed var(--accent); margin-bottom: 20px;">
+    <label style="font-size:0.8em; color:var(--accent); font-weight:bold;">✨ 手机本地智能入账</label>
+<div style="display:flex; gap:10px; margin-top:8px;">
+        <input type="text" id="smart-input" class="input-style" style="margin:0;" placeholder="输入：分类+动作+金额+备注">
+        <button class="btn" style="width:80px;" onclick="parseSmartInput()">执行</button>
+    </div>
+    <div style="font-size:0.7em; color:var(--text-sec); margin-top:8px; line-height:1.5;">
+        • <b>支出(-)</b>：花、赔、少、还 <br>
+        • <b>收入(+)</b>：赚、收、多 <br>
+        • <b>特殊(A还B)</b>：需包含“还”字，前减后加。如：<i>工资卡还花呗500</i> <br>
+        • <b>备注</b>：识别“备注”二字后的内容，点击列表备注可修改。
+    </div>
+</div>
+
+    <div id="edit-panel" class="card" style="display:none;">
+        <h3 style="margin-top:0;">✍️ 资产登记</h3>
+        
+<label style="font-size:0.8em; color:var(--text-sec);">1. 管理路径 (从下拉菜单选择已有路径进行编辑)</label>
+<div style="display:flex; gap:10px; margin: 8px 0 5px 0;">
+    <select id="path-ref-selector" class="input-style" style="margin:0; flex:1;" onchange="fillPathFromRef()">
+        <option value="">-- 选择已有路径快速填入 --</option>
+    </select>
+</div>
+<div style="display:flex; gap:10px; margin-bottom:15px;">
+    <input type="text" id="new-path" class="input-style" style="margin:0;" placeholder="在这里编辑名称">
+    <div style="display:flex; gap:5px;">
+        <button class="btn btn-outline" style="width:70px; font-size:0.8em; padding:5px;" onclick="addNewPath()">添加</button>
+        <button class="btn btn-outline" style="width:70px; font-size:0.8em; padding:5px; border-color:#ffa940; color:#ffa940;" onclick="renamePath()">修改</button>
+    </div>
+</div>
+
+<label style="font-size:0.8em; color:var(--text-sec);">2. 选择账户并记录余额 (支持搜索)</label>
+<div style="display:flex; gap:10px; margin-bottom: 10px;">
+    <input list="path-list" id="path-selector" class="input-style" style="margin:0;" placeholder="搜索或选择已有路径...">
+    <datalist id="path-list"></datalist>
+    <button class="btn btn-outline" style="width:80px; border-color:var(--danger); color:var(--danger);" onclick="deleteCurrentPath()">删除</button>
+</div>
+
+        <input type="number" step="0.01" id="amount-input" class="input-style" placeholder="当前金额 (欠款用负数)">
+        <input type="text" id="remark-input" class="input-style" placeholder="添加备注 (可选，如：私房钱、旅游基金)">
+        <button class="btn" onclick="submitFinance()">永久存入云端</button>
+    </div>
+
+    <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:15px;">
+            <div>
+                <div style="font-size:0.85em; color:var(--text-sec);">当前总计估值</div>
+                <h2 id="total-val" style="margin:5px 0 0 0; color:var(--accent);">￥0.00</h2>
+            </div>
+            <button class="btn btn-outline" style="width:70px; padding:5px; font-size:0.8em;" onclick="refreshData()">刷新</button>
+        </div>
+        <div id="finance-list-container" style="min-height: 100px;">
+            数据同步中...
+        </div>
+    </div>
+</div>
+
+<script>
+    // --- 配置区 ---
+    const CONFIG = {
+        URL: 'https://morkovixfwdsaknmwavj.supabase.co',
+        KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1vcmtvdml4Zndkc2Frbm13YXZqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM3MzM1NDIsImV4cCI6MjA3OTMwOTU0Mn0.wh-UEaQyr3bpJBQkCrzJpRR5v4NvRpx3LsnsAo-DGqE'
+    };
+    const db = supabase.createClient(CONFIG.URL, CONFIG.KEY);
+
+    let state = {
+        userId: '',
+        isEditMode: false,
+        paths: JSON.parse(localStorage.getItem('finance_paths') || '["支付宝/余额", "微信/零钱", "银行卡/工资卡"]')
+    };
+
+    // --- 加密逻辑 ---
+    async function sha256(str) {
+        const buf = new TextEncoder().encode(str);
+        const hash = await crypto.subtle.digest('SHA-256', buf);
+        return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+// --- 手动/独立登录（修复版） ---
+async function manualAuth() {
+    const id = document.getElementById('user-id-input').value.trim();
+    const pwd = document.getElementById('pwd-input').value;
+    if (!id || !pwd) return alert("请填写完整信息");
+
+    const hash = await sha256(pwd);
+
+    try {
+        // 请求数据
+        const { data: dbResult, error } = await db
+            .from('settings')
+            .select('data')
+            .eq('user_id', id);
+
+        if (error) throw error;
+
+        if (dbResult && dbResult.length > 0) {
+            const settingsObj = dbResult[0].data;
+            // 兼容性提取：如果 data 是对象则取内部 hash，否则直接对比
+            const dbHash = (typeof settingsObj === 'object') ? settingsObj.auth_hash : settingsObj;
+
+            if (dbHash === hash) {
+                // 登录成功逻辑
+                state.userId = id;
+                state.isEditMode = true;
+                localStorage.setItem('settingUserId', id);
+                localStorage.setItem('adminPasswordHash', hash);
+                updateUI();
+                refreshData();
+                alert("🔓 解锁成功：已进入编辑模式");
+            } else {
+                alert("❌ 密码错误");
+            }
+        } else {
+            alert("❓ 未找到该 ID，请检查输入或 RLS 权限");
+        }
+    } catch (err) {
+        console.error("验证出错:", err);
+        alert("系统错误: " + err.message);
+    }
+}
+
+
+
+function logout() {
+    if (confirm("确定要退出登录并锁定编辑权限吗？")) {
+        // 清理本地存储
+        localStorage.removeItem('userId');
+        localStorage.removeItem('adminPasswordHash');
+        
+        // 重置状态
+        state.userId = '';
+        state.isEditMode = false;
+        
+        // UI 更新
+        document.getElementById('user-id-input').value = '';
+        document.getElementById('pwd-input').value = '';
+        updateUI();
+        refreshData();
+    }
+}
+// --- 自动登录检查（修复版） ---
+async function init() {
+    // 1. 尝试所有可能的 ID 键名 (兼容主页面的 userId)
+    const savedId = localStorage.getItem('userId') || localStorage.getItem('settingUserId');
+    // 2. 获取钥匙
+    const savedHash = localStorage.getItem('adminPasswordHash');
+
+    console.log("正在尝试自动登录...", { ID: savedId, 有无钥匙: !!savedHash });
+
+    if (savedId) {
+        state.userId = savedId;
+        document.getElementById('user-id-input').value = savedId;
+        
+        // 如果有钥匙，去云端验证
+        if (savedHash) {
+            try {
+                const { data: dbResult, error } = await db
+                    .from('settings')
+                    .select('data')
+                    .eq('user_id', savedId);
+                
+                if (dbResult && dbResult.length > 0) {
+                    const settingsObj = dbResult[0].data;
+                    // 核心提取：从 data 对象里拿 auth_hash
+                    const dbHash = (typeof settingsObj === 'object') ? settingsObj.auth_hash : settingsObj;
+                    
+                    if (dbHash === savedHash) {
+                        state.isEditMode = true;
+                        console.log("✅ 自动验证成功，已解锁编辑权限");
+                    } else {
+                        console.log("❌ 钥匙(Hash)不匹配");
+                    }
+                }
+            } catch (e) {
+                console.error("验证过程出错:", e);
+            }
+        }
+    }
+    
+    // 更新界面和加载数据
+    updateUI();
+    refreshData();
+}
+
+    // --- UI 更新逻辑 ---
+    function updateUI() {
+        const tag = document.getElementById('auth-status-tag');
+        const loginPanel = document.getElementById('login-panel');
+        const editPanel = document.getElementById('edit-panel');
+
+        if (state.isEditMode) {
+            tag.innerText = "编辑模式";
+            tag.className = "status-tag tag-edit";
+            loginPanel.style.display = 'none';
+            editPanel.style.display = 'block';
+        } else {
+            tag.innerText = "只读";
+            tag.className = "status-tag tag-readonly";
+            loginPanel.style.display = 'block';
+            editPanel.style.display = 'none';
+        }
+        renderPathSelector();
+    }
+
+    // --- 路径管理 ---
+function renderPathSelector() {
+    const sel = document.getElementById('path-selector');
+    const refSel = document.getElementById('path-ref-selector');
+    
+    // 生成选项 HTML
+    const optionsHtml = state.paths.sort().map(p => `<option value="${p}">${p.replace(/\//g,' > ')}</option>`).join('');
+    
+    // 更新录入余额的下拉菜单 
+    sel.innerHTML = optionsHtml;
+    
+    // 更新参考编辑的下拉菜单，并保留第一个提示项
+    refSel.innerHTML = '<option value="">-- 选择已有路径快速填入 --</option>' + optionsHtml;
+}
+
+function fillPathFromRef() {
+    const refSel = document.getElementById('path-ref-selector');
+    const input = document.getElementById('new-path');
+    
+    if (refSel.value) {
+        input.value = refSel.value; // 将选中的路径填入输入框 
+        input.focus(); // 自动聚焦，方便你立即修改 [cite: 62]
+    }
+}
+
+    function addNewPath() {
+        const val = document.getElementById('new-path').value.trim();
+        if (val && !state.paths.includes(val)) {
+            state.paths.push(val);
+            localStorage.setItem('finance_paths', JSON.stringify(state.paths));
+            renderPathSelector();
+            document.getElementById('new-path').value = '';
+        }
+    }
+
+async function renamePath() {
+    const oldPath = document.getElementById('path-ref-selector').value;
+    const newPath = document.getElementById('new-path').value.trim();
+
+    if (!oldPath || !newPath) return alert("请先在下拉框选择旧路径，并在输入框输入新名称");
+    if (oldPath === newPath) return alert("新旧名称相同，无需修改");
+    if (!state.isEditMode) return alert("请先解锁编辑权限");
+
+    if (!confirm(`确定将“${oldPath}”更名为“${newPath}”吗？\n这将同步更新云端所有历史记录。`)) return;
+
+    try {
+        // 1. 更新云端数据库：将所有旧路径记录改为新路径
+        const { error: dbError } = await db
+            .from('finance_records')
+            .update({ category_path: newPath })
+            .eq('user_id', state.userId)
+            .eq('category_path', oldPath);
+
+        if (dbError) throw dbError;
+
+        // 2. 更新本地路径列表 state.paths
+        state.paths = state.paths.map(p => p === oldPath ? newPath : p);
+        
+        // 3. 移除可能存在的重复项（如果新名称已存在）
+        state.paths = [...new Set(state.paths)];
+
+        // 4. 持久化到本地存储
+        localStorage.setItem('finance_paths', JSON.stringify(state.paths));
+
+        // 5. 刷新界面
+        renderPathSelector();
+        document.getElementById('new-path').value = '';
+        await refreshData();
+        
+        alert("✅ 分类名称已成功修改并同步。");
+    } catch (err) {
+        console.error("重命名失败:", err);
+        alert("修改失败: " + err.message);
+    }
+}
+// --- 路径管理增强 ---
+function deleteCurrentPath() {
+    const sel = document.getElementById('path-selector');
+    const pathToDelete = sel.value;
+
+    if (!pathToDelete) return;
+    if (!confirm(`确定要从列表中删除路径“${pathToDelete}”吗？\n(这不会删除已存入云端的账目记录)`)) return;
+
+    // 从 state.paths 中过滤掉选中的路径 
+    state.paths = state.paths.filter(p => p !== pathToDelete);
+    
+    // 更新本地存储 [cite: 29, 61]
+    localStorage.setItem('finance_paths', JSON.stringify(state.paths));
+    
+    // 重新渲染下拉菜单并更新 UI [cite: 58, 59]
+    renderPathSelector();
+    alert("路径已移除");
+}
+
+
+async function parseSmartInput() {
+// 强制登录拦截
+    if (!state.userId) {
+        alert("🚨 请先点击上方【开始同步/登录】！不登录数据没法存。");
+        return;
+    }
+    const input = document.getElementById('smart-input').value.trim();
+    if (!input) return;
+
+    // 1. 提取金额
+    const amtMatch = input.match(/\d+(\.\d+)?/);
+    if (!amtMatch) return alert("没找到金额数字");
+    const amount = parseFloat(amtMatch[0]);
+
+    // 2. 识别分类 (严格按出现顺序)
+    let matched = [];
+    state.paths.forEach(p => {
+        const name = p.split('/').pop();
+        const idx = input.indexOf(name);
+        if (idx !== -1) matched.push({ p, idx, name });
+    });
+    matched.sort((a, b) => a.idx - b.idx);
+
+    // 3. 识别备注
+    let remark = "无备注";
+    if (input.includes("备注")) {
+        remark = input.split("备注").pop().trim();
+    }
+
+    const recordDate = new Date().toISOString();
+    let records = [];
+    const hasReturn = input.includes('还'); // 核心：有没有“还”字
+
+    // --- 判定核心 ---
+    if (matched.length >= 2 && hasReturn) {
+        // 【模式一：双账户特殊处置】 必须有“还”字
+        // 逻辑：第一个名字减，第二个名字加
+        records.push({ category_path: matched[0].p, amount: -amount, remark: remark, user_id: state.userId, record_date: recordDate });
+        records.push({ category_path: matched[1].p, amount: amount, remark: remark, user_id: state.userId, record_date: recordDate });
+    } 
+    else if (matched.length >= 1) {
+        // 【模式二：单账户或无“还”字的普通识别】
+        // 取第一个匹配到的分类为准
+        const path = matched[0].p;
+        let dir = 0;
+
+        // 严格匹配你给的关键字
+        const plusWords = ['赚', '收', '多'];
+        const minusWords = ['花', '赔', '少', '还'];
+
+        if (plusWords.some(w => input.includes(w))) dir = 1;
+        else if (minusWords.some(w => input.includes(w))) dir = -1;
+
+        if (dir === 0) return alert("请包含关键词：(赚收多) 或 (花赔少还)");
+        
+        records.push({ category_path: path, amount: amount * dir, remark: remark, user_id: state.userId, record_date: recordDate });
+    } else {
+        return alert("得带上分类名(如：微信、花呗、滕含)");
+    }
+
+    // 4. 执行
+    const summary = records.map(r => `${r.category_path.split('/').pop()}: ${r.amount > 0 ? '+' : ''}${r.amount}`).join('\n');
+    if (confirm(`解析结果：\n${summary}\n备注：${remark}`)) {
+        const { error } = await db.from('finance_records').insert(records);
+        if (error) alert("失败: " + error.message);
+        else {
+            document.getElementById('smart-input').value = '';
+            refreshData();
+        }
+    }
+}
+
+    // --- 云端数据读写 ---
+    async function submitFinance() {
+    const path = document.getElementById('path-selector').value;
+    const amt = parseFloat(document.getElementById('amount-input').value);
+    const remark = document.getElementById('remark-input').value.trim(); // 获取备注
+
+    if (isNaN(amt)) return alert("请输入有效金额");
+
+    const { error } = await db.from('finance_records').insert([
+        { 
+            user_id: state.userId, 
+            category_path: path, 
+            amount: amt,
+            remark: remark // 将备注写入数据库
+        }
+    ]);
+
+    if (error) alert("写入云端失败: " + error.message);
+    else {
+        document.getElementById('amount-input').value = '';
+        document.getElementById('remark-input').value = ''; // 清空备注栏
+        refreshData();
+    }
+}
+
+async function refreshData() {
+    if (!state.userId) {
+        document.getElementById('finance-list-container').innerHTML = "请输入 User ID 查看数据";
+        return;
+    }
+
+    try {
+        const { data, error } = await db.from('finance_records')
+            .select('*')
+            .eq('user_id', state.userId)
+            .order('record_date', { ascending: false });
+
+        if (error) throw error;
+
+        // --- 数据处理：按路径累计金额 ---
+        const summary = {}; 
+        const details = {}; 
+
+        data.forEach(item => {
+            const path = item.category_path;
+            if (summary[path] === undefined) {
+                summary[path] = 0;
+                details[path] = [];
+            }
+            summary[path] += item.amount;
+            details[path].push(item);
+        });
+
+        const listContainer = document.getElementById('finance-list-container');
+        listContainer.innerHTML = '';
+        let total = 0;
+const keys = Object.keys(summary).sort();
+        if (keys.length === 0) {
+            listContainer.innerHTML = '<div style="color:#666; text-align:center; padding:20px;">暂无资产记录</div>';
+            document.getElementById('total-val').innerText = "￥0.00";
+            return;
+        }
+
+        // --- 新增：大类分组逻辑 ---
+        const groups = {};
+        keys.forEach(path => {
+            const root = path.split('/')[0]; // 获取一级分类，如“支付宝”
+            if (!groups[root]) groups[root] = [];
+            groups[root].push(path);
+        });
+
+        // 遍历分组进行渲染
+        Object.keys(groups).sort().forEach(root => {
+            const groupCard = document.createElement('div');
+            groupCard.style.cssText = "background:rgba(255,255,255,0.02); border:1px solid var(--border); border-radius:12px; padding:15px; margin-bottom:15px;";
+            
+            let groupTotal = 0;
+            // 构建子项 HTML
+            const itemsHtml = groups[root].map(path => {
+                const amount = summary[path];
+                groupTotal += amount;
+                const safeId = btoa(encodeURIComponent(path)).replace(/=/g, '');
+                
+                return `
+                    <div class="list-item" onclick="toggleDetails('${safeId}')" style="cursor:pointer; padding:10px 0; border-bottom:1px solid #222;">
+                        <div style="font-size:0.9em;">${path.includes('/') ? path.split('/').slice(1).join(' > ') : path}</div>
+                        <div style="font-family:monospace; font-weight:bold; color:${amount >= 0 ? 'var(--accent)' : 'var(--danger)'}">
+                            ￥${amount.toLocaleString(undefined, {minimumFractionDigits: 2})}
+                        </div>
+                    </div>
+                    <div id="details-${safeId}" style="display:none; background:rgba(0,0,0,0.3); padding:8px; border-radius:8px; margin:5px 0;">
+                        ${details[path].map(r => `
+                            <div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid #333; font-size:0.85em;">
+                                <div style="color:var(--text-sec);">
+                                    <div>${r.record_date ? new Date(r.record_date).toLocaleDateString() : '历史记录'}</div>
+                                    <div style="color:#eee; cursor:pointer; text-decoration:underline;" 
+     onclick="updateRemark(${r.id}, '${r.remark || ''}')">
+     ${r.remark || '无备注(点击修改)'}
+</div>
+                                </div>
+                                <div style="text-align:right;">
+                                    <div style="font-weight:bold; color:${r.amount >= 0 ? '#fff' : 'var(--danger)'}">￥${r.amount.toLocaleString()}</div>
+                                    ${state.isEditMode ? `<span class="del-btn" style="font-size:10px; margin-top:4px; display:inline-block;" onclick="deleteRecord(${r.id})">删除</span>` : ''}
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            }).join('');
+
+            groupCard.innerHTML = `
+                <div style="display:flex; justify-content:space-between; font-weight:bold; color:var(--accent); padding-bottom:10px; border-bottom:1px solid var(--border); margin-bottom:5px;">
+                    <span>📁 ${root}</span>
+                    <span>￥${groupTotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                </div>
+                ${itemsHtml}
+            `;
+            listContainer.appendChild(groupCard);
+        });
+
+        document.getElementById('total-val').innerText = `￥${total.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+
+    } catch (err) {
+        console.error("刷新失败:", err);
+        document.getElementById('finance-list-container').innerHTML = "数据同步失败，请刷新页面";
+    }
+}
+
+// 展开/收起函数
+function toggleDetails(safeId) {
+    const el = document.getElementById(`details-${safeId}`);
+    if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+        
+
+    async function deleteRecord(id) {
+        if (!confirm("确定要永久删除这条记录吗？")) return;
+        const { error } = await db.from('finance_records').delete().eq('id', id);
+        if (error) alert("删除失败");
+        else refreshData();
+    }
+
+async function updateRemark(id, oldRemark) {
+    const newRemark = prompt("修改备注：", oldRemark);
+    if (newRemark === null) return; // 点取消
+    
+    const { error } = await db.from('finance_records')
+        .update({ remark: newRemark })
+        .eq('id', id);
+
+    if (error) alert("更新失败: " + error.message);
+    else refreshData();
+}
+
+    window.onload = init;
+</script>
+
+</body>
+</html>
