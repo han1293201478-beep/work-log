@@ -6,7 +6,82 @@
   <title>夜班工时合规检查器（AI 对话增强版）</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/lunar-javascript/lunar.js"></script>
+
   <style>
+
+/* 深夜模式的颜色定义 */
+/* 1. 定义商业级的深色变量 */
+body.dark-mode {
+    --bg-main: #121212;      /* 主背景：深黑灰 */
+    --bg-card: #1e1e1e;      /* 卡片背景：略浅 */
+    --text-primary: #e0e0e0; /* 主文字：不晃眼的白 */
+    --text-sec: #a0a0a0;     /* 次要文字：灰色 */
+    --accent: #8ab4f8;       /* 柔和的品牌色 */
+    --border: #333333;       /* 边框色 */
+}
+
+/* 2. 应用到具体元素上 */
+body.dark-mode {
+    background-color: var(--bg-main) !important;
+    color: var(--text-primary) !important;
+}
+
+body.dark-mode .container {
+    background-color: var(--bg-card) !important;
+    border: 1px solid var(--border) !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5) !important;
+}
+
+/* 针对日历格子的商业级处理 */
+body.dark-mode .day-cell {
+    background-color: #252525 !important;
+    border: 1px solid var(--border) !important;
+}
+
+body.dark-mode .day-cell:hover {
+    background-color: #2c2c2c !important;
+}
+
+/* 按钮和高亮 */
+body.dark-mode .highlight {
+    background-color: rgba(138, 180, 248, 0.2) !important;
+    color: var(--accent) !important;
+}
+//三倍工资
+body.dark-mode .holiday-triple {
+    background-color: #2a1215 !important;
+}
+
+
+/* 针对日历单元格的调整完成 */
+
+/* 自定义高亮样式 */
+.highlight {
+font-weight: bold; /* 加粗 */
+color: #007bff; /* 蓝色文字，可以根据喜好修改 */
+background-color: #e7f3ff; /* 淡蓝色背景 */
+padding: 0 4px; /* 左右撑开一点空间 */
+border-radius: 4px; /* 边角圆滑一点 */
+}
+
+//三倍工资
+.holiday-triple {
+    background-color: #fff1f0 !important; /* 浅红色背景 */
+}
+.triple-tag {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    background: #ff4d4f;
+    color: white;
+    font-size: 10px;
+    padding: 0 4px;
+    border-radius: 3px;
+    font-weight: bold;
+    transform: scale(0.8); /* 稍微缩小一点，避免挤占空间 */
+}
+
     body { font-family: "Microsoft YaHei", sans-serif;
 padding: 20px; background-color: #f9f9f9; }
     .container { max-width: 1000px; margin: 0 auto; background: white; padding: 20px;
@@ -219,14 +294,14 @@ cursor: pointer; font-weight: bold; }
       <button id="tab-stats" onclick="switchTab('stats')">📊 统计分析</button>
       <button id="tab-chat" onclick="switchTab('chat')">💬 AI 对话</button>
       <button id="tab-settings" onclick="switchTab('settings')">⚙️ 设置</button>
+      <button onclick="toggleDarkMode()" id="darkModeBtn">🌙 进入深夜模式</button>
     </div>
 
     <div id="panel-calendar" class="panel active">
       <div class="month-picker">
         <label>选择月份：</label>
   
-        <input type="month" id="monthInput" />
-        <button onclick="renderCalendar()">确定</button>
+        <input type="month" id="monthInput" onchange="handleMonthChange()" />
         <button class="btn-settings" onclick="forceLoad()">📥 从云端加载</button>
         <button class="btn-sync" onclick="forceUpload()">📤 立即上传</button> 
       </div>
@@ -249,7 +324,13 @@ ID: <span id="userIdDisplay"></span>
       </div>
 
       <div class="controls">
-        <p id="multiSelectHint">• PC端：按住 **Ctrl/Cmd** 键点击日期进入/退出多选模式；手机端：**长按** 任意日期触发多选｜🖱️ **点击 "切换多选模式"** 按钮也可以进入多选模式。</p>
+
+       <p id="multiSelectHint" class="nav-tabs">
+    • PC端：按住 <span class="highlight">Ctrl/Cmd</span> 键点击日期进入多选模式；
+    手机端/PC端: 点击<span class="highlight"> "🖱️ 开启多选"</span> 进入多选模式；
+点击<span class="highlight"> "取消多选"</span> 退出。
+</p>
+
         <div id="selectionModeIndicator" class="selection-mode-indicator" style="display: none;">多选模式（点击日期切换选中）</div>
         <button class="btn-big" onclick="applyShiftToSelected('big')">设为大夜班</button>
      
@@ -753,7 +834,9 @@ var supabase = window.supabaseInstance;
                 const [year, month] = selectedMonth.split('-').map(Number);
                 const startOfMonth = `${selectedMonth}-01`;
                 // [修复 UTC 偏差] 使用 getLocalDateString
-                const endOfMonth = getLocalDateString(new Date(year, month, 0)); 
+	
+                const nextMonthFirstDay = new Date(year, month, 1); // 这里的 month 已经是下个月
+	const endOfMonth = getLocalDateString(nextMonthFirstDay);
                 
                 // 2. 筛选出当前月份需要上传的 shifts
                 const shiftsToInsert = Object.entries(shifts)
@@ -1090,6 +1173,11 @@ var supabase = window.supabaseInstance;
 
         const cell = document.createElement('div');
         cell.className = 'day-cell';
+        // --- 【新增：节假日逻辑开始】 ---
+        if (typeof isTriplePayHoliday === 'function' && isTriplePayHoliday(dateStr)) {
+            cell.classList.add('holiday-triple'); 
+        }
+        // --- 【新增：节假日逻辑结束】 ---
         cell.dataset.date = dateStr;
         
         const shiftData = shifts[dateStr];
@@ -1097,7 +1185,11 @@ var supabase = window.supabaseInstance;
         // [修复 Request 2] 始终使用日期数字作为单元格头部
         const dayNumber = i; 
         
-        cell.innerHTML = `<div class="day-number">${dayNumber}</div>${getShiftDisplay(shiftData)}`;
+        let tripleTag = '';
+        if (cell.classList.contains('holiday-triple')) {
+            tripleTag = `<div class="triple-tag">3倍</div>`;
+        }
+        cell.innerHTML = `<div class="day-number">${dayNumber}</div>${tripleTag}${getShiftDisplay(shiftData)}`;
 
         // 单击事件：单选或多选模式下的切换选中
         cell.addEventListener('click', (e) => {
@@ -1193,6 +1285,40 @@ var supabase = window.supabaseInstance;
       }
       updateMultiSelectUI();
     }
+
+// 深夜模式
+function toggleDarkMode() {
+    const html = document.documentElement; // 针对整个网页
+    
+    // 如果没有 dark-mode 类，就加上；有就去掉
+    if (!html.classList.contains('dark-mode')) {
+        html.classList.add('dark-mode');
+        // 核心：强制反转颜色，但保持图片和图表颜色正常
+        html.style.filter = "invert(1) hue-rotate(180deg)";
+        // 图片和图表不需要反转，不然会很奇怪，把它们反转回来
+        const noInvert = document.querySelectorAll('img, canvas, .no-invert');
+        noInvert.forEach(el => el.style.filter = "invert(1) hue-rotate(180deg)");
+        
+        localStorage.setItem('theme', 'dark');
+        document.getElementById('darkModeBtn').innerText = "☀️ 退出深夜模式";
+    } else {
+        html.classList.remove('dark-mode');
+        html.style.filter = "";
+        const noInvert = document.querySelectorAll('img, canvas, .no-invert');
+        noInvert.forEach(el => el.style.filter = "");
+        
+        localStorage.setItem('theme', 'light');
+        document.getElementById('darkModeBtn').innerText = "🌙 进入深夜模式";
+    }
+}
+
+// 页面加载时检查之前的设置
+window.addEventListener('DOMContentLoaded', (event) => {
+    if (localStorage.getItem('theme') === 'dark') {
+        document.body.classList.add('dark-mode');
+        document.getElementById('darkModeBtn').innerText = "☀️ 退出深夜模式";
+    }
+});
 
     function clearMultiSelectUI() {
       document.querySelectorAll('.day-cell.multi-selected').forEach(el => {
@@ -2350,6 +2476,64 @@ var supabase = window.supabaseInstance;
         AIAssistant.initSystemMessage();
         AIAssistant.displayMessage('assistant', '对话已重置。请提供新的排班范围或开始提问。', false);
     }
+
+
+   // 当用户在月份选择器中选择了一个新月份时自动触发
+function handleMonthChange() {
+    const monthInput = document.getElementById('monthInput');
+    if (monthInput && monthInput.value) {
+        // 更新全局变量 selectedMonth (如果有这个变量的话)
+        selectedMonth = monthInput.value; 
+        
+        console.log("月份已切换为:", selectedMonth);
+        
+        // 直接调用原本“确定”按钮绑定的函数
+        renderCalendar(); 
+        
+        // 如果你希望切换月份后自动从云端同步最新数据，也可以加上这行：
+        // forceLoad(); 
+    }
+}
+
+//引入农历计算三倍工资
+function isTriplePayHoliday(dateStr) {
+    const date = new Date(dateStr);
+    const m = date.getMonth() + 1;
+    const d = date.getDate();
+    
+    // --- A. 阳历固定三倍工资日 ---
+    if (m === 1 && d === 1) return true; // 元旦
+    if (m === 5 && (d === 1 || d === 2) ) return true; // 劳动节2天
+    if (m === 10 && (d === 1 || d === 2 || d === 3)) return true; // 国庆前三天
+
+    // --- B. 农历/节气变动三倍工资日 ---
+    // 使用库计算农历
+    const lunar = Lunar.fromDate(date);
+    const lm = lunar.getMonth();
+    const ld = lunar.getDay();
+
+
+    // A. 除夕判定（农历每月的最后一天）
+    // 获取当月最后一天：如果是 12 月且是最后一天
+    const nextDay = new Date(date);
+    nextDay.setDate(date.getDate() + 1);
+    const nextLunar = Lunar.fromDate(nextDay);
+    if (nextLunar.getMonth() === 1 && nextLunar.getDay() === 1) {
+        return true; // 这一天是除夕（也就是大年初一的前一天）
+    }
+    // B. 春节 (正月初一、初二、初三)
+    if (lm === 1 && (ld === 1 || ld === 2 || ld === 3)) return true;
+    // 端午节 (五月初五)
+    if (lm === 5 && ld === 5) return true;
+    // 中秋节 (八月十五)
+    if (lm === 8 && ld === 15) return true;
+    
+    // 清明节 (通常是阳历 4月4日或5日，以节气为准)
+    const jieQi = lunar.getJieQi();
+    if (jieQi === "清明") return true;
+
+    return false;
+}
     
     // ============ 初始化逻辑 ============
     function init() {
@@ -2425,6 +2609,5 @@ var supabase = window.supabaseInstance;
   </script>
 </body>
 </html>
-
 
 
