@@ -178,22 +178,24 @@
     </div>
 </div>
 
+<div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom: 12px; align-items: center; background: rgba(255,255,255,0.05); padding: 10px; border-radius: 8px;">
+    <div style="display:flex; flex:1; min-width:240px; gap:5px; align-items:center;">
+        <input type="date" id="filter-date-start" class="input-style" style="margin:0; flex:1; font-size:12px; padding:6px;">
+        <span style="color:var(--text-sec); font-size:12px;">至</span>
+        <input type="date" id="filter-date-end" class="input-style" style="margin:0; flex:1; font-size:12px; padding:6px;">
+    </div>
+    <div style="display:flex; gap:5px; width:100%; justify-content: flex-end; flex: 1;">
+        <button onclick="refreshData()" class="btn" style="flex:1; max-width:80px; padding:8px 0; font-size:0.75em;white-space:nowrap;">筛选</button>
+        <button onclick="resetDateFilter()" class="btn btn-outline" style="flex:1; max-width:80px; padding:8px 0; font-size:0.75em; white-space:nowrap;border-color:#666; color:#888;">重置</button>
+    </div>
+</div>
+
     <div class="card">
         <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:15px;">
             <div>
                 <div style="font-size:0.85em; color:var(--text-sec);">当前总计估值</div>
                 <h2 id="total-val" style="margin:5px 0 0 0; color:var(--accent);">￥0.00</h2>
             </div>
-
-<div style="display:flex; gap:8px; margin-bottom: 12px; align-items: center; background: rgba(255,255,255,0.05); padding: 10px; border-radius: 8px;">
-    <input type="date" id="filter-date-start" class="input-style" style="margin:0; flex:1; font-size:12px; padding:8px;">
-    <span style="color:var(--text-sec); font-size:12px;">至</span>
-    <input type="date" id="filter-date-end" class="input-style" style="margin:0; flex:1; font-size:12px; padding:8px;">
-    <div style="display:flex; gap:5px;">
-        <button onclick="refreshData()" class="btn" style="width:50px; padding:8px 0; font-size:0.75em;">筛选</button>
-        <button onclick="resetDateFilter()" class="btn btn-outline" style="width:50px; padding:8px 0; font-size:0.75em; border-color:#666; color:#888;">重置</button>
-    </div>
-</div>
 
             <button class="btn btn-outline" style="width:70px; padding:5px; font-size:0.8em;" onclick="refreshData()">刷新</button>
         </div>
@@ -630,6 +632,21 @@ async function refreshData() {
 
         const { data: records, error } = await query;
         if (error) throw error;
+
+       // --- 新增：动态提取并同步路径 ---
+if (records) {
+    // 1. 从当前账号的云端记录中提取所有真实存在的路径
+    const dbPaths = [...new Set(records.map(r => r.category_path).filter(p => p))];
+    
+    // 2. 如果没有任何云端记录（新账号），则保留基本的默认路径，否则完全使用云端路径
+    const defaultPaths = ["支付宝/余额", "微信/零钱", "银行卡/工资卡"];
+    state.paths = dbPaths.length > 0 ? dbPaths : defaultPaths;
+    
+    // 3. 更新本地缓存并重新渲染下拉菜单
+    localStorage.setItem('finance_paths', JSON.stringify(state.paths));
+    renderPathSelector(); 
+}
+        // --- 路径同步结束 ---
 
         // 计算总额
         let totalBalance = records.reduce((sum, r) => sum + r.amount, 0);
