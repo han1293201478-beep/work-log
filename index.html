@@ -4,26 +4,43 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#0f172a">
   <title>夜班工时合规检查器（AI 对话增强版）</title>
+  <script>
+    // 在页面渲染前立即应用暗色模式，防止闪白
+    (function() {
+      const theme = localStorage.getItem('theme');
+      if (theme === 'dark') {
+        document.documentElement.classList.add('dark-mode-init');
+        document.write('<style id="dark-mode-pre-style">body{background-color:#0f172a !important;color:#cbd5e1 !important;}</style>');
+      }
+    })();
+  </script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/lunar-javascript/lunar.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 
   <style>
 
-/* 深夜模式的颜色定义 */
-/* 1. 定义商业级的深色变量 */
-body.dark-mode {
-    --bg-main: #121212;      /* 主背景：深黑灰 */
-    --bg-card: #1e1e1e;      /* 卡片背景：略浅 */
-    --text-primary: #e0e0e0; /* 主文字：不晃眼的白 */
-    --text-sec: #a0a0a0;     /* 次要文字：灰色 */
-    --accent: #8ab4f8;       /* 柔和的品牌色 */
-    --border: #333333;       /* 边框色 */
+/* 深夜模式的极致优化 - 采用现代深蓝灰配色方案 */
+body.dark-mode, html.dark-mode-init body {
+    --bg-main: #0f172a;       /* 深邃背景 */
+    --bg-card: #1e293b;       /* 稍微浮起的卡片背景 */
+    --bg-input: #334155;      /* 输入框背景 */
+    --text-primary: #cbd5e1;  /* 柔和文字 (从 f1f5f9 改为 cbd5e1，避免刺眼) */
+    --text-sec: #94a3b8;      /* 辅助文字 */
+    --accent: #38bdf8;        /* 品牌蓝 */
+    --border: #334155;        /* 边框 */
+    --success: #4ade80;       /* 成功绿 */
+    --warning: #fbbf24;       /* 警告黄 */
+    --danger: #f87171;        /* 危险红 */
+    --day-cell-bg: #1e293b;
+    --bg-panel: #1e293b;      /* 面板背景 */
 }
 
-/* 2. 应用到具体元素上 */
-body.dark-mode {
+body.dark-mode, html.dark-mode-init body {
     background-color: var(--bg-main) !important;
     color: var(--text-primary) !important;
 }
@@ -31,27 +48,170 @@ body.dark-mode {
 body.dark-mode .container {
     background-color: var(--bg-card) !important;
     border: 1px solid var(--border) !important;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.5) !important;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.5) !important;
 }
 
-/* 针对日历格子的商业级处理 */
+/* 标题和文字颜色调整 */
+body.dark-mode h1, body.dark-mode h2, body.dark-mode h3, body.dark-mode h4, body.dark-mode strong, body.dark-mode b {
+    color: var(--text-primary) !important;
+}
+
+/* 导航栏按钮调整 */
+body.dark-mode .nav-tabs button {
+    background: #1e293b !important;
+    color: var(--text-sec) !important;
+    border-color: var(--border) !important;
+}
+body.dark-mode .nav-tabs button.active {
+    background: var(--accent) !important;
+    color: #0f172a !important;
+    border-color: var(--accent) !important;
+}
+
+/* 所有按钮在暗色模式下的通用调整 */
+body.dark-mode button:not(.nav-tabs button):not(.day-cell):not(.btn-big):not(.btn-small):not(.btn-delete):not(.btn-extra):not(.btn-settings):not(.btn-sync) {
+    background: #334155 !important;
+    border: 1px solid var(--border) !important;
+    color: var(--text-primary) !important; /* 按钮文字也改为柔和色 */
+}
+
+/* 按钮特定颜色优化 - 降低饱和度 */
+body.dark-mode .btn-sync { background: #064e3b !important; border-color: #065f46 !important; }
+body.dark-mode .btn-big { background: #78350f !important; border-color: #92400e !important; }
+body.dark-mode .btn-small { background: #064e3b !important; border-color: #065f46 !important; }
+body.dark-mode .btn-delete { background: #7f1d1d !important; border-color: #991b1b !important; }
+body.dark-mode .btn-extra { background: #4c1d95 !important; border-color: #5b21b6 !important; }
+body.dark-mode .btn-settings { background: #083344 !important; border-color: #155e75 !important; }
+body.dark-mode .btn-clear { background: #1e293b !important; color: var(--text-sec) !important; border-color: var(--border) !important; }
+
+/* 针对普通 button 的样式补漏 */
+body.dark-mode .import-export button,
+body.dark-mode .view-toggle button,
+body.dark-mode .controls button {
+    background: #1e293b;
+    color: var(--text-sec);
+    border-color: var(--border);
+}
+body.dark-mode .view-toggle button.active {
+    background: var(--accent) !important;
+    color: #0f172a !important;
+}
+
+/* 日历格子优化 */
 body.dark-mode .day-cell {
-    background-color: #252525 !important;
+    background-color: var(--day-cell-bg) !important;
+    border-color: var(--border) !important;
+    color: var(--text-primary) !important;
+}
+body.dark-mode .day-cell:hover {
+    background-color: #334155 !important;
+}
+body.dark-mode .day-header {
+    background: #334155 !important;
+    color: var(--text-sec) !important;
+}
+
+/* 班次状态颜色调整 */
+body.dark-mode .day-cell.selected-big { background: #b45309 !important; border-color: #f59e0b !important; }
+body.dark-mode .day-cell.selected-small { background: #15803d !important; border-color: #22c55e !important; }
+body.dark-mode .day-cell.custom { background: #be185d !important; border-color: #ec4899 !important; }
+body.dark-mode .day-cell.over-limit { box-shadow: 0 0 0 3px var(--danger) !important; }
+
+/* 节假日样式调整 */
+body.dark-mode .holiday-triple {
+    background-color: rgba(248, 113, 113, 0.15) !important;
+}
+
+/* 面板和输入框 */
+body.dark-mode .setting-item, 
+body.dark-mode .stat-item, 
+body.dark-mode .user-controls,
+body.dark-mode .shift-info,
+body.dark-mode .week-list,
+body.dark-mode #monthSummary {
+    background-color: #1e293b !important;
+    border-color: var(--border) !important;
+    color: var(--text-primary) !important;
+}
+
+body.dark-mode #accessModeBadge {
+    background-color: #334155 !important;
+    color: var(--text-sec) !important;
+}
+
+body.dark-mode #currentUserIdDisplay {
+    color: var(--accent) !important;
+}
+
+body.dark-mode .stat-value {
+    color: var(--accent) !important;
+}
+
+body.dark-mode #monthSummary {
+    border-left: 5px solid var(--accent) !important;
+}
+
+body.dark-mode input, 
+body.dark-mode select, 
+body.dark-mode textarea {
+    background-color: var(--bg-input) !important;
+    color: var(--text-primary) !important;
+    border-color: var(--border) !important;
+}
+
+/* 弹窗调整 */
+body.dark-mode .modal-content {
+    background-color: var(--bg-card) !important;
+    color: var(--text-primary) !important;
     border: 1px solid var(--border) !important;
 }
 
-body.dark-mode .day-cell:hover {
-    background-color: #2c2c2c !important;
+/* 聊天区域 */
+body.dark-mode #chatHistory, 
+body.dark-mode .ai-chat-history,
+body.dark-mode #chatContainer {
+    background-color: #0f172a !important;
+    border-color: var(--border) !important;
+}
+body.dark-mode .chat-ai {
+    background-color: #334155 !important;
+    color: var(--text-primary) !important;
+}
+body.dark-mode .chat-ai pre {
+    background: #1e293b !important;
+    border-color: var(--border) !important;
+    color: #cbd5e1 !important;
+}
+body.dark-mode .ai-chat-input-container,
+body.dark-mode #chatInputContainer {
+    background-color: var(--bg-card) !important;
+    border-color: var(--border) !important;
 }
 
-/* 按钮和高亮 */
-body.dark-mode .highlight {
-    background-color: rgba(138, 180, 248, 0.2) !important;
-    color: var(--accent) !important;
+/* 状态和结果 */
+body.dark-mode .result.ok { background: rgba(6, 78, 59, 0.3) !important; color: var(--success) !important; }
+body.dark-mode .result.warn { background: rgba(120, 53, 15, 0.3) !important; color: var(--warning) !important; }
+body.dark-mode .sync-status.synced { background: rgba(6, 78, 59, 0.3) !important; color: var(--success) !important; }
+body.dark-mode .sync-status.error { background: rgba(127, 29, 29, 0.3) !important; color: var(--danger) !important; }
+body.dark-mode .sync-status.warning { background: rgba(120, 53, 15, 0.3) !important; color: var(--warning) !important; }
+body.dark-mode .week-item.violation { background: rgba(127, 29, 29, 0.2) !important; color: var(--danger) !important; }
+
+/* 详情折叠面板 */
+body.dark-mode details summary {
+    background: #334155 !important;
+    color: var(--accent) !important; /* 箭头和汇总文字使用品牌色，更易读 */
 }
-//三倍工资
-body.dark-mode .holiday-triple {
-    background-color: #2a1215 !important;
+body.dark-mode details summary::marker {
+    color: var(--accent); /* 明确设置小箭头的颜色 */
+}
+body.dark-mode details div {
+    border-color: var(--border) !important;
+}
+
+/* 高亮样式 */
+body.dark-mode .highlight {
+    background-color: rgba(56, 189, 248, 0.2) !important;
+    color: var(--accent) !important;
 }
 
 
@@ -59,16 +219,23 @@ body.dark-mode .holiday-triple {
 
 /* 自定义高亮样式 */
 .highlight {
-font-weight: bold; /* 加粗 */
-color: #007bff; /* 蓝色文字，可以根据喜好修改 */
-background-color: #e7f3ff; /* 淡蓝色背景 */
-padding: 0 4px; /* 左右撑开一点空间 */
-border-radius: 4px; /* 边角圆滑一点 */
+    font-weight: bold; /* 加粗 */
+    color: #007bff; /* 蓝色文字，可以根据喜好修改 */
+    background-color: #e7f3ff; /* 淡蓝色背景 */
+    padding: 0 4px; /* 左右撑开一点空间 */
+    border-radius: 4px; /* 边角圆滑一点 */
+}
+body.dark-mode .highlight {
+    color: var(--accent);
+    background-color: rgba(56, 189, 248, 0.2);
 }
 
 //三倍工资
 .holiday-triple {
     background-color: #fff1f0 !important; /* 浅红色背景 */
+}
+body.dark-mode .holiday-triple {
+    background-color: rgba(248, 113, 113, 0.15) !important;
 }
 .triple-tag {
     position: absolute;
@@ -139,6 +306,9 @@ font-weight: bold; margin-top: 2px;
     .btn-sync { background: #52c41a; color: white; }
     .shift-info { margin-top: 20px; padding: 15px;
 background: #f0f9ff; border-radius: 6px; }
+    .user-controls { background: #f0f5ff; border-radius: 8px; }
+    #accessModeBadge { background: #ccc; }
+    #monthSummary { background: #e6f7ff; border-left: 5px solid #1890ff; }
     .result { margin-top: 10px; padding: 8px; border-radius: 4px; font-weight: bold;
 }
     .ok { background: #f6ffed; color: #52c41a; }
@@ -288,11 +458,11 @@ cursor: pointer; font-weight: bold; }
       <span id="syncStatus" class="sync-status synced">✓ 已同步</span>
     </h1>
 
-    <div class="user-controls" style="text-align: center; margin-bottom: 15px; padding: 10px; background: #f0f5ff; border-radius: 8px;">
+    <div class="user-controls" style="text-align: center; margin-bottom: 15px; padding: 10px; border-radius: 8px;">
         <span>当前账号: <b id="currentUserIdDisplay">未登录</b></span>
-        <span id="accessModeBadge" style="font-size: 12px; padding: 2px 6px; border-radius: 4px; margin-left: 5px; background: #ccc;">未连接</span>
+        <span id="accessModeBadge" style="font-size: 12px; padding: 2px 6px; border-radius: 4px; margin-left: 5px;">未连接</span>
         <div style="margin-top: 10px;">
-            <input type="text" id="loginUserId" placeholder="输入用户ID" style="padding: 5px; width: 120px; border:1px solid #ccc; border-radius:4px;">
+            <input type="text" id="loginUserId" placeholder="输入用户ID" style="padding: 5px; width: 120px; border-radius:4px;">
             <button class="btn-small" onclick="openLoginModal('owner')">🔑 登录(管理)</button>
             <button class="btn-settings" onclick="openLoginModal('guest')">🔍 查询(只读)</button>
         </div>
@@ -318,6 +488,8 @@ cursor: pointer; font-weight: bold; }
         <button onclick="exportData()">📤 导出备份（JSON）</button>
         <button onclick="document.getElementById('importFileInput').click()">📥 手动导入</button>
         <button class="btn-delete" onclick="clearCurrentMonthShifts()">🗑️ 清空当月班表</button>
+        <button class="btn-sync" onclick="document.getElementById('ocrFileInput').click()">📷 识图导入 (本地)</button>
+        <input type="file" id="ocrFileInput" accept="image/*" style="display:none" onchange="processImage(event)" />
         <input type="file" id="importFileInput" accept=".json" onchange="importData(event)" />
         <p style="font-size:12px;color:#666;margin-top:6px;">
      
@@ -346,6 +518,8 @@ ID: <span id="userIdDisplay"></span>
         <button class="btn-small" onclick="applyShiftToSelected('small')">设为小夜班</button>
         <button class="btn-delete" onclick="deleteSelected()">删除所选</button>
         <button class="btn-extra" onclick="openExtraModal()">额外调整</button>
+        <button class="btn-settings" onclick="toggleStatus('备岗')" style="background-color: var(--warning); border-color: var(--warning); color: #000;">备岗</button>
+        <button class="btn-settings" onclick="toggleStatus('加班')" style="background-color: var(--danger); border-color: var(--danger); color: #fff;">加班</button>
         
         <button class="btn-extra" id="toggleMultiSelectBtn" onclick="toggleMultiSelectMode()">🖱️ 开启多选</button>
         
@@ -359,7 +533,7 @@ ID: <span id="userIdDisplay"></span>
   
          </div>
       
-      <div id="monthSummary" style="margin-top: 15px; padding: 10px; background: #e6f7ff; border-left: 5px solid #1890ff; border-radius: 4px;">
+      <div id="monthSummary" style="margin-top: 15px; padding: 10px; border-radius: 4px;">
           </div>
       <div id="calendarAiChatContainer" style="margin-top: 15px;">
         <h3 id="calendarAiTitle">🔄 排班合规性分析与讨论</h3>
@@ -450,6 +624,8 @@ id="chatStartDate" /></div>
         <div class="setting-item"><label>小夜班工时（小时）</label><input type="number" step="0.1" id="settingSmall" /></div>
         <div class="setting-item"><label>合规阈值（7天最大工时）</label><input type="number" step="0.1" id="settingLimit" /></div>
         <div class="setting-item"><label>默认视图</label><select id="settingDefaultView"><option value="week">标准周历</option><option value="cycle">6天循环历</option></select></div>
+        <div class="setting-item"><label>识图导入识别姓名</label><input type="text" id="settingOcrName" placeholder="输入要识别的姓名" /></div>
+        <div class="setting-item"><label>开启上班提醒 (前一天22:00)</label><select id="settingNotifyEnabled"><option value="false">关闭</option><option value="true">开启</option></select></div>
         <div class="setting-item"><label>同步用户ID（多设备请保持一致）</label><input type="text" id="settingUserId" 
 placeholder="输入字母数字组合" 
 /><small style="color:#666;">用于区分不同用户数据</small></div>
@@ -600,6 +776,7 @@ var supabase = window.supabaseInstance;
     let multiSelectedDates = new Set();
     let rightClickedDate = '';
     let weekSummaries = [];
+    let naturalWeekSummaries = []; // 新增：自然周统计
     let chartInstance = null;
     let isMultiSelectMode = false;
     let currentStatsSummary = {};
@@ -871,30 +1048,30 @@ var supabase = window.supabaseInstance;
                 }).select(); 
 
                 // 4. **强制删除** 该月份当前用户的所有记录 (Delete by Range)
-                const deletePromise = supabase.from('shifts')
+                // 必须先等待删除完成，再进行插入，以避免并行执行导致的 23505 唯一约束冲突
+                const { error: deleteError } = await supabase.from('shifts')
                     .delete()
                     .eq('user_id', userId)
                     .gte('date', startOfMonth) 
                     .lte('date', endOfMonth);
-                // 5. 批量插入新记录 (Insert)
-                let insertPromise;
-                if (shiftsToInsert.length > 0) {
-                    insertPromise = supabase.from('shifts').insert(shiftsToInsert).select();
-                } else {
-                    // 如果没有班次要插入，仍然等待删除操作完成
-                    insertPromise = Promise.resolve({ data: [], error: null });
+
+                if (deleteError) {
+                    console.warn(`云端删除操作遇到警告（尝试 ${attempt + 1}）:`, deleteError);
                 }
 
-                // 6. 统一等待并检查所有操作
-                const [deleteResponse, insertResponse, settingsResponse] = await Promise.all([deletePromise, insertPromise, settingsPromise]);
-                if (deleteResponse.error) {
-                    // 删除操作的警告不中断同步，但需记录
-                    console.warn(`云端删除操作遇到警告（尝试 ${attempt + 1}）:`, deleteResponse.error);
+                // 5. 批量插入新记录 (使用 upsert 更加稳妥)
+                let insertResponse;
+                if (shiftsToInsert.length > 0) {
+                    insertResponse = await supabase.from('shifts').upsert(shiftsToInsert).select();
+                } else {
+                    insertResponse = { data: [], error: null };
                 }
+
+                // 6. 统一等待并检查 settings 操作
+                const settingsResponse = await settingsPromise;
 
                 if (insertResponse.error) {
                     throw insertResponse.error;
-                // 插入失败必须报错
                 }
                 if (settingsResponse.error) {
                     throw settingsResponse.error;
@@ -991,6 +1168,206 @@ var supabase = window.supabaseInstance;
     }
 
     // 新增同步按钮逻辑
+    // [新增] 识图导入逻辑
+    async function processImage(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        updateSyncStatus('syncing', '⏳ 准备识图引擎...');
+        
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            const img = new Image();
+            img.onload = async () => {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d', { willReadFrequently: true });
+                canvas.width = img.width;
+                canvas.height = img.height;
+                ctx.drawImage(img, 0, 0);
+
+                let worker = null;
+                try {
+                    // 更加稳健的 v5 初始化方式
+                    worker = await Tesseract.createWorker('chi_sim', 1, {
+                        logger: m => {
+                            if (m.status === 'recognizing text') {
+                                updateSyncStatus('syncing', `⏳ 识图中: ${Math.round(m.progress * 100)}%`);
+                            } else {
+                                const statusMap = {
+                                    'loading tesseract core': '加载内核',
+                                    'loading language traineddata': '加载语言包',
+                                    'initializing api': '初始化引擎'
+                                };
+                                updateSyncStatus('syncing', `⏳ ${statusMap[m.status] || '准备中'}...`);
+                            }
+                        }
+                    });
+
+                    const { data } = await worker.recognize(canvas);
+                    const lines = data.lines;
+                    let addedCount = 0;
+                    const processedDates = new Set(); // 记录本次识图已处理的日期
+
+                    // 1. 预处理所有数字块，重点寻找位于左侧 25% 区域的日期（第二列）
+                    const possibleDates = [];
+                    data.words.forEach(word => {
+                        const numMatch = word.text.match(/^(\d{1,2})$/);
+                        if (numMatch) {
+                            const val = parseInt(numMatch[1]);
+                            if (val >= 1 && val <= 31) {
+                                possibleDates.push({
+                                    num: numMatch[1],
+                                    bbox: word.bbox,
+                                    centerX: (word.bbox.x0 + word.bbox.x1) / 2,
+                                    centerY: (word.bbox.y0 + word.bbox.y1) / 2
+                                });
+                            }
+                        }
+                    });
+
+                    // 2. 识别图片宽度，划分区域 (星期 | 日期 | 大夜(6) | 空格 | 小夜(6))
+                    const imgWidth = canvas.width;
+                    const dateColLimit = imgWidth * 0.15; // 日期在第二列，约 2/15 = 13%
+                    const rightSideBoundary = imgWidth * 0.58; // 空格在第 9 列，9/15 = 60%，取 58% 作为界限
+
+                    // 3. 遍历每一行寻找配置的姓名
+                    const targetName = settings.ocrName || '韩伟舰';
+                    const nameChars = targetName.split('');
+
+                    lines.forEach(line => {
+                        // 在每一行中寻找匹配的文字块
+                        line.words.forEach(word => {
+                            const text = word.text.replace(/\s+/g, '');
+                            // 匹配逻辑：包含姓名中的任意字符即认为可能匹配
+                            const isMatch = nameChars.some(char => text.includes(char));
+                            
+                            // 如果匹配到（且置信度较高，避免误读）
+                            if (isMatch && word.confidence > 30) {
+                                const wordBbox = word.bbox;
+                                const wordCenterX = (wordBbox.x0 + wordBbox.x1) / 2;
+                                const wordCenterY = (wordBbox.y0 + wordBbox.y1) / 2;
+                                
+                                // 寻找同一行（Y轴接近）且位于日期列（X轴最靠左）的数字
+                                let bestDate = null;
+                                let minVDist = Infinity;
+
+                                possibleDates.forEach(d => {
+                                    if (d.centerX < dateColLimit) {
+                                        const vDist = Math.abs(d.centerY - wordCenterY);
+                                        // 寻找垂直距离最近的日期
+                                        if (vDist < minVDist && vDist < (wordBbox.y1 - wordBbox.y0) * 1.5) {
+                                            minVDist = vDist;
+                                            bestDate = d;
+                                        }
+                                    }
+                                });
+
+                                if (bestDate) {
+                                    const dateStr = `${selectedMonth}-${bestDate.num.padStart(2, '0')}`;
+                                    
+                                    // 一个人一天只能上一个班，如果已经处理过该日期，跳过
+                                    if (processedDates.has(dateStr)) return;
+
+                                    // 判定是左侧区域（大夜班）还是右侧区域（小夜班）
+                                    const isRightSide = wordCenterX > rightSideBoundary; 
+
+                                    // 采样点：取文字块右下角边缘背景
+                                    const sampleX = Math.min(canvas.width - 1, wordBbox.x1 - 2);
+                                    const sampleY = Math.min(canvas.height - 1, wordBbox.y1 - 2);
+                                    const pixel = ctx.getImageData(sampleX, sampleY, 1, 1).data;
+                                    const hsv = rgbToHsv(pixel[0], pixel[1], pixel[2]);
+                                    
+                                    let type = isRightSide ? 'small' : 'big'; 
+                                    let note = '';
+
+                                    // 颜色语义判定：仅在加班或备岗时记录备注
+                                    if (hsv.h >= 70 && hsv.h <= 170 && hsv.s > 8) {
+                                        note = '加班';
+                                    } else if (hsv.h >= 20 && hsv.h <= 65 && hsv.s > 8) {
+                                        note = '备岗';
+                                    }
+
+                                    // 写入班表：接入原有 applyShiftToSelected 的核心逻辑
+                                    const nextDay = new Date(dateStr);
+                                    nextDay.setDate(nextDay.getDate() + 1);
+                                    const nextDayStr = getLocalDateString(nextDay);
+
+                                    // 1. 清除次日残留的 auto-next
+                                    if (shifts[nextDayStr]?.type === 'auto-next') {
+                                        delete shifts[nextDayStr];
+                                    }
+
+                                    // 2. 设置当前主班次：严格匹配手动添加的字段顺序
+                                    shifts[dateStr] = {
+                                        type: type,
+                                        hours: type === 'big' ? settings.bigMain : settings.small,
+                                        extra: 0
+                                    };
+                                    // 只有在有备注时才添加 note 字段，保持 JSON 简洁
+                                    if (note) {
+                                        shifts[dateStr].note = note;
+                                    }
+
+                                    // 3. 如果是大夜班，自动设置次日跨天工时
+                                    if (type === 'big') {
+                                        shifts[nextDayStr] = { 
+                                            type: 'auto-next', 
+                                            hours: settings.bigNext, 
+                                            extra: 0 
+                                        };
+                                    }
+                                    
+                                    processedDates.add(dateStr);
+                                    addedCount++;
+                                }
+                            }
+                        });
+                    });
+
+                    if (addedCount > 0) {
+                        saveToStorageSafe({ mode: 'auto' });
+                        renderCalendar();
+                        updateSyncStatus('synced', `✅ 已识别 ${addedCount} 条`);
+                    } else {
+                        updateSyncStatus('warning', `❓ 未发现 ${targetName} 班次`);
+                        alert(`识图完成，但未在图中识别出 [${targetName}] 的班次记录。请确保图片清晰且包含日期数字。`);
+                    }
+
+                    // 修复：清空 input 的值，确保同一个文件可以连续多次识别
+                    event.target.value = '';
+
+                } catch (err) {
+                    console.error('OCR Error:', err);
+                    updateSyncStatus('error', '❌ 识图失败: ' + err.message);
+                    alert('识图过程中出错，请尝试减小图片体积或更换浏览器。');
+                } finally {
+                    if (worker) await worker.terminate();
+                }
+            };
+            img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+    }
+
+    // RGB 转 HSV 工具函数
+    function rgbToHsv(r, g, b) {
+        r /= 255; g /= 255; b /= 255;
+        const max = Math.max(r, g, b), min = Math.min(r, g, b);
+        let h, s, v = max;
+        const d = max - min;
+        s = max === 0 ? 0 : d / max;
+        if (max === min) { h = 0; } 
+        else {
+            switch (max) {
+                case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+                case g: h = (b - r) / d + 2; break;
+                case b: h = (r - g) / d + 4; break;
+            }
+            h /= 6;
+        }
+        return { h: h * 360, s: s * 100, v: v * 100 };
+    }
+
     async function forceLoad() {
       const success = await loadFromCloud();
       if (success) isInitialLoadComplete = true; // 确保手动加载成功后设置标志
@@ -1038,9 +1415,54 @@ var supabase = window.supabaseInstance;
         alert(`✅ 已清空 ${selectedMonth} 的本地班次。`);
     }
     
-    const defaultSettings = { bigMain: 7.4, bigNext: 3, small: 9.3, limit: 40, defaultView: 'week', aiEndpoint: 'https://api.openai.com/v1/chat/completions', aiApiKey: '', aiModel: 'gpt-3.5-turbo', auth_hash: '' };
+    const defaultSettings = { bigMain: 7.4, bigNext: 3, small: 9.3, limit: 40, defaultView: 'week', ocrName: '韩伟舰', notifyEnabled: false, aiEndpoint: 'https://api.openai.com/v1/chat/completions', aiApiKey: '', aiModel: 'gpt-3.5-turbo', auth_hash: '' };
 
-    function switchTab(tab) {
+    // ============ 通知管理逻辑 ============
+    async function scheduleNotifications() {
+        if (!settings.notifyEnabled) return;
+        
+        const now = new Date();
+        const tomorrow = new Date(now);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const tomorrowStr = getLocalDateString(tomorrow);
+        
+        const tomorrowShift = shifts[tomorrowStr];
+        if (tomorrowShift && tomorrowShift.type !== 'none' && tomorrowShift.type !== 'auto-next') {
+            const shiftTypeMap = { 'big': '大夜班', 'small': '小夜班' };
+            const typeName = shiftTypeMap[tomorrowShift.type] || '班次';
+            let message = `明天有 [${typeName}]`;
+            if (tomorrowShift.note) {
+                message += ` (${tomorrowShift.note})`;
+            }
+            
+            const lastNotifyDate = localStorage.getItem('lastNotifyDate');
+            const todayStr = getLocalDateString(now);
+            
+            if (lastNotifyDate !== todayStr && now.getHours() >= 22) {
+                if ('Notification' in window && Notification.permission === 'granted') {
+                    new Notification('排班提醒', {
+                        body: message,
+                        icon: 'https://cdn-icons-png.flaticon.com/512/3652/3652191.png'
+                    });
+                    localStorage.setItem('lastNotifyDate', todayStr);
+                }
+                
+                if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications) {
+                    window.Capacitor.Plugins.LocalNotifications.schedule({
+                        notifications: [{
+                            title: '排班提醒',
+                            body: message,
+                            id: 1,
+                            schedule: { at: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 22, 0) }
+                        }]
+                    });
+                }
+            }
+        }
+    }
+    setInterval(scheduleNotifications, 60000);
+
+    async function switchTab(tab) {
       ['calendar', 'stats', 'chat', 'settings'].forEach(t => {
         document.getElementById(`panel-${t}`).classList.remove('active');
         document.getElementById(`tab-${t}`).classList.remove('active');
@@ -1067,7 +1489,7 @@ var supabase = window.supabaseInstance;
       renderCalendar();
     }
     
-    const dayNames = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+    const dayNames = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
     const cycleNames = ['休息', '日1', '日2', '日3', '日4', '日5', '日6'];
 
     function getDayName(date) {
@@ -1102,6 +1524,11 @@ var supabase = window.supabaseInstance;
       html += `<div class="day-total">${total.toFixed(1)}h</div>`;
       if (extra !== 0) {
         html += `<div class="day-extra">(${extra > 0 ? '+' : ''}${extra.toFixed(1)}h)</div>`;
+      }
+      // 【新增】显示备注标签（加班/备岗）
+      if (shiftData.note) {
+          const noteColor = shiftData.note === '加班' ? '#52c41a' : '#faad14'; // 绿色表示加班，橙色表示备岗
+          html += `<div style="font-size: 10px; background: ${noteColor}; color: white; border-radius: 3px; padding: 1px 3px; margin-top: 2px; display: inline-block;">${shiftData.note}</div>`;
       }
       return html;
     }
@@ -1188,8 +1615,11 @@ var supabase = window.supabaseInstance;
       
       // 2. 填充空白
       if (currentView === 'week') {
-        // 标准周历：从周日开始计算
-        const firstDayOfWeek = firstDay.getDay(); // 0 (Sun) to 6 (Sat)
+        // 标准周历：改为从周一开始展示
+        // 原生 getDay(): 0(日), 1(一), 2(二), 3(三), 4(四), 5(五), 6(六)
+        // 目标 offset: 0(一), 1(二), 2(三), 3(四), 4(五), 5(六), 6(日)
+        const day = firstDay.getDay();
+        const firstDayOfWeek = (day === 0) ? 6 : day - 1; // 周日(0)变6，其他减1
         for (let i = 0; i < firstDayOfWeek; i++) {
           calendarEl.appendChild(document.createElement('div'));
         }
@@ -1301,7 +1731,7 @@ var supabase = window.supabaseInstance;
           <h3>本月排班总览 (${selectedMonth})</h3>
           <p style="font-size: 16px;">
               🗓️ 总天数: ${daysInMonth} 天 | 
-              🛠️ **总工时:** <strong style="color: #1890ff;">${totalMonthHours.toFixed(1)} 小时</strong> | 
+              🛠️ **总工时:** <span class="stat-value">${totalMonthHours.toFixed(1)} 小时</span> | 
               📅 工作天数: ${totalWorkDays} 天
           </p>
       `;
@@ -1330,25 +1760,14 @@ var supabase = window.supabaseInstance;
 
 // 深夜模式
 function toggleDarkMode() {
-    const html = document.documentElement; // 针对整个网页
+    const body = document.body;
     
-    // 如果没有 dark-mode 类，就加上；有就去掉
-    if (!html.classList.contains('dark-mode')) {
-        html.classList.add('dark-mode');
-        // 核心：强制反转颜色，但保持图片和图表颜色正常
-        html.style.filter = "invert(1) hue-rotate(180deg)";
-        // 图片和图表不需要反转，不然会很奇怪，把它们反转回来
-        const noInvert = document.querySelectorAll('img, canvas, .no-invert');
-        noInvert.forEach(el => el.style.filter = "invert(1) hue-rotate(180deg)");
-        
+    if (!body.classList.contains('dark-mode')) {
+        body.classList.add('dark-mode');
         localStorage.setItem('theme', 'dark');
         document.getElementById('darkModeBtn').innerText = "☀️ 退出深夜模式";
     } else {
-        html.classList.remove('dark-mode');
-        html.style.filter = "";
-        const noInvert = document.querySelectorAll('img, canvas, .no-invert');
-        noInvert.forEach(el => el.style.filter = "");
-        
+        body.classList.remove('dark-mode');
         localStorage.setItem('theme', 'light');
         document.getElementById('darkModeBtn').innerText = "🌙 进入深夜模式";
     }
@@ -1356,6 +1775,10 @@ function toggleDarkMode() {
 
 // 页面加载时检查之前的设置
 window.addEventListener('DOMContentLoaded', (event) => {
+    // 移除预加载样式
+    const preStyle = document.getElementById('dark-mode-pre-style');
+    if (preStyle) preStyle.remove();
+
     if (localStorage.getItem('theme') === 'dark') {
         document.body.classList.add('dark-mode');
         document.getElementById('darkModeBtn').innerText = "☀️ 退出深夜模式";
@@ -1512,6 +1935,41 @@ window.addEventListener('DOMContentLoaded', (event) => {
       document.getElementById('extraModal').style.display = 'none';
     }
 
+    async function toggleStatus(statusText) {
+      if (multiSelectedDates.size === 0) {
+        alert('请先选择至少一个日期');
+        return;
+      }
+      
+      const datesToApply = Array.from(multiSelectedDates);
+      datesToApply.forEach(dateStr => {
+        if (!shifts[dateStr]) {
+          shifts[dateStr] = { type: 'none', hours: 0, extra: 0 };
+        }
+        
+        let currentNote = shifts[dateStr].note || '';
+        if (currentNote.includes(statusText)) {
+          // 如果已经有了，就移除
+          shifts[dateStr].note = currentNote.replace(statusText, '').replace(/,\s*,/g, ',').replace(/^,|,$/g, '').trim();
+        } else {
+          // 如果没有，就添加
+          shifts[dateStr].note = currentNote ? `${currentNote}, ${statusText}` : statusText;
+        }
+        
+        // 如果 note 为空，删除该属性
+        if (!shifts[dateStr].note) delete shifts[dateStr].note;
+        
+        // 如果 type 为 none 且没有 note 和 extra，删除整个日期
+        if (shifts[dateStr].type === 'none' && !shifts[dateStr].note && !shifts[dateStr].extra) {
+          delete shifts[dateStr];
+        }
+      });
+      
+      await saveToStorageSafe({ mode: 'auto' });
+      renderCalendar();
+      clearSelected();
+    }
+
     async function applyExtra() {
       const inputEl = document.getElementById('extraInput');
       const unit = document.querySelector('input[name="unit"]:checked').value;
@@ -1598,17 +2056,18 @@ window.addEventListener('DOMContentLoaded', (event) => {
     function checkCompliance() {
       const windows = generateAllRelevant7DayWindows();
       weekSummaries = [];
+      naturalWeekSummaries = []; // 重置自然周
       
       const overLimitDates = new Set();
       const limit = settings.limit;
       
+      // 1. 计算任意连续7天
       windows.forEach(w => {
         let total = 0;
         const datesInRange = [];
         for (let i = 0; i < 7; i++) {
           const d = new Date(w.start);
           d.setDate(d.getDate() + i);
-          // [修复 UTC 偏差] 使用 getLocalDateString 
           const iso = getLocalDateString(d); 
           datesInRange.push(iso);
           total += getDailyHours(iso);
@@ -1616,9 +2075,7 @@ window.addEventListener('DOMContentLoaded', (event) => {
         
         const violation = total > limit;
         weekSummaries.push({
-          // [修复 UTC 偏差] 使用 getLocalDateString 
           start: getLocalDateString(w.start),
-          // [修复 UTC 偏差] 使用 getLocalDateString 
           end: getLocalDateString(w.end),
           total: total,
           dates: datesInRange,
@@ -1626,12 +2083,54 @@ window.addEventListener('DOMContentLoaded', (event) => {
         });
         
         if (violation) {
-          // Only mark dates within the current month as over-limit on the UI
           datesInRange.forEach(d => {
             if (d.startsWith(selectedMonth)) overLimitDates.add(d);
           });
         }
       });
+
+      // 2. 计算自然周 (周一至周日)
+      const firstDay = getFirstDayOfMonth();
+      const lastDay = getLastDayOfMonth();
+      
+      // 找到第一个周一（可能在前一个月）
+      let currentMon = new Date(firstDay);
+      while (currentMon.getDay() !== 1) { // 1 is Monday
+        currentMon.setDate(currentMon.getDate() - 1);
+      }
+      
+      while (currentMon <= lastDay) {
+        let total = 0;
+        const datesInRange = [];
+        for (let i = 0; i < 7; i++) {
+          const d = new Date(currentMon);
+          d.setDate(d.getDate() + i);
+          const iso = getLocalDateString(d);
+          datesInRange.push(iso);
+          total += getDailyHours(iso);
+        }
+        
+        const startStr = getLocalDateString(currentMon);
+        const endStr = datesInRange[6];
+        const violation = total > limit;
+        
+        naturalWeekSummaries.push({
+          start: startStr,
+          end: endStr,
+          total: total,
+          dates: datesInRange,
+          violation: violation
+        });
+        
+        // 自然周超限也标红
+        if (violation) {
+          datesInRange.forEach(d => {
+            if (d.startsWith(selectedMonth)) overLimitDates.add(d);
+          });
+        }
+        
+        currentMon.setDate(currentMon.getDate() + 7);
+      }
       
       document.querySelectorAll('.day-cell').forEach(cell => {
         const dateStr = cell.dataset.date;
@@ -1644,24 +2143,51 @@ window.addEventListener('DOMContentLoaded', (event) => {
     
     function updateWeekSummary() {
       const listEl = document.getElementById('weekList');
-      const violations = weekSummaries.filter(w => w.violation && w.end.startsWith(selectedMonth));
       
-      let html = '';
-      if (violations.length === 0) {
-        html = `<p class="result ok">🎉 合规检查通过！当前月份没有检测到连续7天工时超过 ${settings.limit} 小时的轮次。</p>`;
-      } else {
-        html = `<p class="result warn">⚠️ 警告！当前月份检测到 ${violations.length} 次超限轮次：</p>`;
-        violations.forEach(w => {
-          html += `<div class="week-item violation">从 ${w.start} 到 ${w.end}：总工时 ${w.total.toFixed(1)}h (超限 ${(w.total - settings.limit).toFixed(1)}h)</div>`;
-        });
-      }
+      // 1. 处理自然周 (周一至周日)
+      const naturalViolations = naturalWeekSummaries.filter(w => w.violation);
+      const naturalSummaryText = naturalViolations.length === 0 ? "🎉 检查通过" : `⚠️ 超限 ${naturalViolations.length} 次`;
       
-      const allListHtml = weekSummaries.filter(w => w.end.startsWith(selectedMonth)).map(w => {
-          const cls = w.violation ? 'violation' : '';
-          return `<div class="week-item ${cls}">从 ${w.start} 到 ${w.end}：总工时 ${w.total.toFixed(1)}h</div>`;
+      const naturalAllHtml = naturalWeekSummaries.map(w => {
+        const cls = w.violation ? 'violation' : '';
+        const style = w.violation ? 'background: #fff7e6; border-left: 4px solid #faad14;' : '';
+        return `<div class="week-item ${cls}" style="${style}">${w.start} ~ ${w.end}：总 ${w.total.toFixed(1)}h</div>`;
       }).join('');
+
+      let naturalHtml = `
+        <details>
+          <summary style="cursor: pointer; font-weight: bold; padding: 8px; background: #f0f5ff; border-radius: 4px; margin-bottom: 5px; list-style: none; display: flex; justify-content: space-between; align-items: center;">
+            <span>📅 自然周统计 (周一至周日)</span>
+            <span class="${naturalViolations.length > 0 ? 'warn' : 'ok'}" style="padding: 2px 8px; border-radius: 10px; font-size: 12px;">${naturalSummaryText} ▼</span>
+          </summary>
+          <div style="max-height: 180px; overflow-y: auto; font-size: 12px; margin-bottom: 15px; padding: 5px; border: 1px dashed #d9d9d9; border-radius: 4px;">
+            ${naturalAllHtml || '<p style="color: #999; text-align: center;">暂无数据</p>'}
+          </div>
+        </details>
+      `;
+
+      // 2. 处理任意连续7天
+      const violations = weekSummaries.filter(w => w.violation && w.end.startsWith(selectedMonth));
+      const slidingSummaryText = violations.length === 0 ? "🎉 检查通过" : `⚠️ 超限 ${violations.length} 次`;
       
-      listEl.innerHTML = html + `<h4 style="margin-top: 15px;">所有轮次：</h4>` + allListHtml;
+      const slidingAllHtml = weekSummaries.filter(w => w.end.startsWith(selectedMonth)).map(w => {
+          const cls = w.violation ? 'violation' : '';
+          return `<div class="week-item ${cls}">${w.start} ~ ${w.end}：总 ${w.total.toFixed(1)}h</div>`;
+      }).join('');
+
+      let slidingHtml = `
+        <details>
+          <summary style="cursor: pointer; font-weight: bold; padding: 8px; background: #f0f5ff; border-radius: 4px; margin-top: 10px; list-style: none; display: flex; justify-content: space-between; align-items: center;">
+            <span>🔄 任意连续7天统计</span>
+            <span class="${violations.length > 0 ? 'warn' : 'ok'}" style="padding: 2px 8px; border-radius: 10px; font-size: 12px;">${slidingSummaryText} ▼</span>
+          </summary>
+          <div style="max-height: 180px; overflow-y: auto; font-size: 12px; padding: 5px; border: 1px dashed #d9d9d9; border-radius: 4px;">
+            ${slidingAllHtml || '<p style="color: #999; text-align: center;">暂无数据</p>'}
+          </div>
+        </details>
+      `;
+      
+      listEl.innerHTML = naturalHtml + slidingHtml;
     }
 
     // ============ UI/Helper Functions ============
@@ -2000,6 +2526,8 @@ window.addEventListener('DOMContentLoaded', (event) => {
       document.getElementById('settingSmall').value = settings.small || defaultSettings.small;
       document.getElementById('settingLimit').value = settings.limit || defaultSettings.limit;
       document.getElementById('settingDefaultView').value = settings.defaultView || defaultSettings.defaultView;
+      document.getElementById('settingOcrName').value = settings.ocrName || defaultSettings.ocrName;
+      document.getElementById('settingNotifyEnabled').value = (settings.notifyEnabled !== undefined ? settings.notifyEnabled : defaultSettings.notifyEnabled).toString();
       document.getElementById('settingUserId').value = getUserId();
       
       document.getElementById('settingAiEndpoint').value = settings.aiEndpoint || defaultSettings.aiEndpoint;
@@ -2018,6 +2546,15 @@ window.addEventListener('DOMContentLoaded', (event) => {
     settings.small = parseFloat(document.getElementById('settingSmall').value) || defaultSettings.small;
     settings.limit = parseFloat(document.getElementById('settingLimit').value) || defaultSettings.limit;
     settings.defaultView = document.getElementById('settingDefaultView').value || defaultSettings.defaultView;
+    settings.ocrName = document.getElementById('settingOcrName').value || defaultSettings.ocrName;
+    settings.notifyEnabled = document.getElementById('settingNotifyEnabled').value === 'true';
+
+    // 如果开启了提醒，尝试申请权限
+    if (settings.notifyEnabled && 'Notification' in window) {
+      if (Notification.permission !== 'granted') {
+        await Notification.requestPermission();
+      }
+    }
     
     const userIdInput = document.getElementById('settingUserId').value;
     localStorage.setItem('userId', userIdInput);
