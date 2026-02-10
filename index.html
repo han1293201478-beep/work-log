@@ -317,6 +317,7 @@ cursor: pointer; font-weight: bold; }
       <div class="import-export">
         <button onclick="exportData()">📤 导出备份（JSON）</button>
         <button onclick="document.getElementById('importFileInput').click()">📥 手动导入</button>
+        <button class="btn-delete" onclick="clearCurrentMonthShifts()">🗑️ 清空当月班表</button>
         <input type="file" id="importFileInput" accept=".json" onchange="importData(event)" />
         <p style="font-size:12px;color:#666;margin-top:6px;">
      
@@ -1002,7 +1003,7 @@ var supabase = window.supabaseInstance;
     async function forceUpload() {
         if (isReadOnly) {
              updateSyncStatus('warning', '⛔️ 只读模式，禁止上传。');
-             alert('⛔️ 权限不足：当前为“查询模式”，无法上传数据。');
+             alert('⛔️ 权限不足：当前为“查询模式”，禁止上传。');
              return;
         }
       if (syncManager.isSyncing) {
@@ -1012,6 +1013,29 @@ var supabase = window.supabaseInstance;
       updateSyncStatus('syncing', '⏳ 正在上传...'); // 调用保存函数，强制进行云端同步
       await saveToStorageSafe({ mode: 'force' });
       // 强制上传模式
+    }
+
+    // [新增] 清空当前月份班表
+    function clearCurrentMonthShifts() {
+        if (!confirm(`⚠️ 确定要清空 ${selectedMonth} 的所有班次吗？\n此操作仅影响本地，需手动上传后才会同步到云端。`)) {
+            return;
+        }
+
+        const [year, month] = selectedMonth.split('-').map(Number);
+        const startOfMonth = `${selectedMonth}-01`;
+        const nextMonthFirstDay = new Date(year, month, 1);
+        const endOfMonth = getLocalDateString(nextMonthFirstDay);
+
+        // 筛选并删除属于当前月份的键
+        Object.keys(shifts).forEach(date => {
+            if (date >= startOfMonth && date <= endOfMonth) {
+                delete shifts[date];
+            }
+        });
+
+        saveToStorageSafe({ mode: 'auto' }); // 仅保存到本地
+        renderCalendar();
+        alert(`✅ 已清空 ${selectedMonth} 的本地班次。`);
     }
     
     const defaultSettings = { bigMain: 7.4, bigNext: 3, small: 9.3, limit: 40, defaultView: 'week', aiEndpoint: 'https://api.openai.com/v1/chat/completions', aiApiKey: '', aiModel: 'gpt-3.5-turbo', auth_hash: '' };
