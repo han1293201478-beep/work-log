@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -319,7 +320,7 @@ cursor: pointer; font-weight: bold; }
         <input type="file" id="importFileInput" accept=".json" onchange="importData(event)" />
         <p style="font-size:12px;color:#666;margin-top:6px;">
      
-        ☁️ 数据自动云端同步 |
+        ☁️ 手动云端同步模式 |
 ✓ 离线可用 |
 ID: <span id="userIdDisplay"></span>
         </p>
@@ -666,7 +667,7 @@ var supabase = window.supabaseInstance;
                 // [修复 Request 2] 即使是只读模式，只要成功连接到用户ID，就允许加载并设置初始加载完成标志
                 isInitialLoadComplete = true; 
                 alert(`🔍 已进入查询模式。\n您可以查看 [${userId}] 的数据，但无法修改或上传。`);
-                await loadFromCloud(); // 加载数据
+                // 登入时不再同步
                 updateUIForAuth(userId, 'guest');
             } 
             else if (mode === 'owner') {
@@ -687,7 +688,7 @@ var supabase = window.supabaseInstance;
                         // [修复 Request 2] 确保新用户在设置密码后可以上传
                         isInitialLoadComplete = true; 
 
-                        await loadFromCloud(); // loadFromCloud 也会设置 isInitialLoadComplete = true
+                        // 登入时不再同步
                         updateUIForAuth(userId, 'owner');
                     } else {
                         updateSyncStatus('warning', '密码未设置，保持只读模式。');
@@ -703,7 +704,7 @@ var supabase = window.supabaseInstance;
                         isInitialLoadComplete = true; 
 
                         updateSyncStatus('synced', '登录成功');
-                        await loadFromCloud();
+                        // 登入时不再同步
                         updateUIForAuth(userId, 'owner');
                     } else {
                         alert('❌ 密码错误！无法获取编辑权限，已自动进入只读模式。');
@@ -828,9 +829,8 @@ var supabase = window.supabaseInstance;
 
 
       // 2. 检查是否需要上传到云端：
-      //    - 如果是手动上传 (mode: 'force')
-      //    - 或者，如果是自动上传 (mode: 'auto') 且首次加载已完成
-      if (supabase && (options.mode === 'force' || isInitialLoadComplete)) {
+      //    - 仅在手动上传 (mode: 'force') 时触发云端同步
+      if (supabase && options.mode === 'force' && isInitialLoadComplete) {
         
         const maxRetries = 5;
         let attempt = 0;
@@ -922,9 +922,8 @@ var supabase = window.supabaseInstance;
             updateSyncStatus('error', '✗ 同步失败: ' + errorMessage.substring(0, 50) + '...');
         }
       } else if (options.mode === 'auto') {
-          // 在自动模式下，如果首次加载未完成，则只进行本地保存
-          updateSyncStatus('warning', '⚠️ 仅保存到本地，请先从云端加载或手动上传');
-          console.log('Skipping cloud sync (auto mode) because initial load is not complete.');
+          // 在自动模式下，仅进行本地保存，不触发云端同步
+          updateSyncStatus('synced', '✓ 已保存到本地');
       }
     }
 
@@ -938,15 +937,25 @@ var supabase = window.supabaseInstance;
       const userId = getUserId();
       updateSyncStatus('syncing', '⏳ 加载云端数据...');
       try {
-        // 确保 load 能够获取所有数据
-        const { data: shiftsData, error: shiftsError } = await supabase.from('shifts').select('date, data').eq('user_id', userId);
-        if (shiftsError && shiftsError.code !== 'PGRST116') throw shiftsError; // 忽略未找到数据错误
+        // 1. 确定当前月份的范围
+        const [year, month] = selectedMonth.split('-').map(Number);
+        const startOfMonth = `${selectedMonth}-01`;
+        const nextMonthFirstDay = new Date(year, month, 1);
+        const endOfMonth = getLocalDateString(nextMonthFirstDay);
+
+        // 2. 仅加载当前月份的数据
+        const { data: shiftsData, error: shiftsError } = await supabase.from('shifts')
+            .select('date, data')
+            .eq('user_id', userId)
+            .gte('date', startOfMonth)
+            .lte('date', endOfMonth);
+
+        if (shiftsError && shiftsError.code !== 'PGRST116') throw shiftsError;
         const { data: settingsData, error: settingsError } = await supabase.from('settings').select('data').eq('user_id', userId).single();
         if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
         
         if (shiftsData) {
-          // 创建新的 shifts 对象，覆盖本地数据
-          shifts = {};
+          // 仅更新当前月份的数据，不清除其他月份
           shiftsData.forEach(row => { shifts[row.date] = row.data; });
           localStorage.setItem('shifts_local', JSON.stringify(shifts));
         }
@@ -2563,47 +2572,11 @@ function isTriplePayHoliday(dateStr) {
       renderCalendar();
       
       initDateRangeForStats();
-
-      // 异步加载云端数据
-      loadFromCloud().then(success => {
-          if (success) {
-              isInitialLoadComplete = true; 
-              // 确保实时更新
-              setupSupabaseRealtime();
-          }
-          // 重新渲染以确保云端数据已加载
-          renderCalendar();
-      });
-
-      // 实时订阅（在 loadFromCloud 成功后调用）
-      function setupSupabaseRealtime() {
-        if (!supabase || window.supabaseSubscription) return;
-        
-        const userId = getUserId();
-        let lastSyncTimestamp = Date.now();
-        
-        const subscription = supabase.channel('shifts_and_settings')
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'shifts', filter: `user_id=eq.${userId}` }, async (payload) => {
-            const now = Date.now();
-            if (syncManager.isSyncing || now - lastSyncTimestamp < 2000) return;
-            lastSyncTimestamp = now;
-            console.log('收到云端班次更新', payload.eventType);
-            await loadFromCloud();
-            isInitialLoadComplete = true; // 确保实时更新也设置了标志
-            renderCalendar();
-          })
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'settings', filter: `user_id=eq.${userId}` }, async (payload) => {
-            const now = Date.now();
-            if (syncManager.isSyncing || now - lastSyncTimestamp < 2000) return;
-            lastSyncTimestamp = now;
-            console.log('收到云端设置更新', payload.eventType);
-            await loadFromCloud();
-            loadSettingsUI();
-          })
-          .subscribe((status) => { console.log('实时订阅状态:', status); });
-        
-        window.supabaseSubscription = subscription;
-      }
+      
+      // [修改] 移除初始化时的自动云端加载和实时订阅
+      // 默认设置为已完成初始加载，允许手动上传
+      isInitialLoadComplete = true; 
+      updateSyncStatus('synced', '✓ 就绪');
     }
 
     window.onload = init;
@@ -2625,6 +2598,5 @@ function isTriplePayHoliday(dateStr) {
   </script>
 </body>
 </html>
-
 
 
